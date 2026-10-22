@@ -30,7 +30,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
     setState(() => _sending = true);
     try {
       await FirestoreService.instance
-          .addComment(videoId: widget.video.id, text: text);
+          .addComment(video: widget.video, text: text);
       _inputCtrl.clear();
     } catch (e) {
       if (!mounted) return;

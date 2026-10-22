@@ -12,6 +12,12 @@ class VibeVideo {
   final List<String> likedBy;
   final int commentCount;
 
+  /// Hashtags parsed from the caption (lowercase, no leading '#').
+  /// Stored on the doc at upload; older docs may not have the field,
+  /// so reads fall back to parsing the caption (see
+  /// [effectiveHashtags]).
+  final List<String> hashtags;
+
   /// Name of the sound attached to this video (Phase 1: the default
   /// "Original sound" for every upload).
   final String soundName;
@@ -27,9 +33,28 @@ class VibeVideo {
     this.likes = 0,
     this.likedBy = const [],
     this.commentCount = 0,
+    this.hashtags = const [],
     this.soundName = 'Original sound',
     required this.createdAt,
   });
+
+  /// Extracts `#tags` from a caption: lowercase, without the '#',
+  /// de-duplicated, in first-appearance order.
+  static List<String> parseHashtags(String caption) {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final m in RegExp(r'#([A-Za-z0-9_]+)').allMatches(caption)) {
+      final tag = m.group(1)!.toLowerCase();
+      if (seen.add(tag)) out.add(tag);
+    }
+    return out;
+  }
+
+  /// The hashtags to actually use for this video: the stored field
+  /// when present, otherwise parsed live from the caption (docs
+  /// uploaded before Phase 2 have no stored field).
+  List<String> get effectiveHashtags =>
+      hashtags.isNotEmpty ? hashtags : parseHashtags(caption);
 
   bool likedByMe(String? myUid) => myUid != null && likedBy.contains(myUid);
 
@@ -63,6 +88,9 @@ class VibeVideo {
       likedBy:
           ((d['likedBy'] ?? []) as List).map((e) => e.toString()).toList(),
       commentCount: (d['commentCount'] ?? 0) as int,
+      hashtags: ((d['hashtags'] ?? []) as List)
+          .map((e) => e.toString().toLowerCase())
+          .toList(),
       soundName: (d['soundName'] ?? 'Original sound') as String,
       createdAt: ts,
     );
@@ -77,6 +105,7 @@ class VibeVideo {
         'likes': likes,
         'likedBy': likedBy,
         'commentCount': commentCount,
+        'hashtags': parseHashtags(caption),
         'soundName': soundName,
         'createdAt': FieldValue.serverTimestamp(),
       };

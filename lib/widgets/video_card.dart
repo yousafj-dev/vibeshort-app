@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
@@ -5,6 +6,7 @@ import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
+import 'package:vibeshort/screens/discover/hashtag_videos_screen.dart';
 import 'package:vibeshort/screens/profile/public_profile_screen.dart';
 import 'package:vibeshort/widgets/comments_sheet.dart';
 
@@ -38,6 +40,10 @@ class _VideoCardState extends State<VideoCard> {
   // Optimistic like state, reconciled with the stream below.
   late bool _liked;
   late int _likes;
+
+  /// Tap recognizers for the caption's hashtag spans; rebuilt with
+  /// the spans and disposed with the card.
+  final List<TapGestureRecognizer> _captionRecognizers = [];
 
   @override
   void initState() {
@@ -86,8 +92,54 @@ class _VideoCardState extends State<VideoCard> {
 
   @override
   void dispose() {
+    for (final r in _captionRecognizers) {
+      r.dispose();
+    }
     _ctrl?.dispose();
     super.dispose();
+  }
+
+  /// Caption as rich text: `#tags` in the accent color, tappable to
+  /// open that hashtag's video grid.
+  InlineSpan _captionSpan(String caption) {
+    for (final r in _captionRecognizers) {
+      r.dispose();
+    }
+    _captionRecognizers.clear();
+    const base = TextStyle(
+      color: Colors.white,
+      fontSize: 14,
+      shadows: [Shadow(color: Colors.black87, blurRadius: 6)],
+    );
+    final spans = <InlineSpan>[];
+    var last = 0;
+    for (final m in RegExp(r'#[A-Za-z0-9_]+').allMatches(caption)) {
+      if (m.start > last) {
+        spans.add(TextSpan(text: caption.substring(last, m.start)));
+      }
+      final tag = m.group(0)!.substring(1).toLowerCase();
+      final recognizer = TapGestureRecognizer()
+        ..onTap = () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+                builder: (_) => HashtagVideosScreen(tag: tag)),
+          );
+        };
+      _captionRecognizers.add(recognizer);
+      spans.add(TextSpan(
+        text: m.group(0),
+        style: const TextStyle(
+          color: AppTheme.accent,
+          fontWeight: FontWeight.w700,
+        ),
+        recognizer: recognizer,
+      ));
+      last = m.end;
+    }
+    if (last < caption.length) {
+      spans.add(TextSpan(text: caption.substring(last)));
+    }
+    return TextSpan(style: base, children: spans);
   }
 
   void _togglePlay() {
@@ -232,15 +284,10 @@ class _VideoCardState extends State<VideoCard> {
                 ),
                 if (video.caption.isNotEmpty) ...[
                   const SizedBox(height: 6),
-                  Text(
-                    video.caption,
+                  RichText(
+                    text: _captionSpan(video.caption),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      shadows: [Shadow(color: Colors.black87, blurRadius: 6)],
-                    ),
                   ),
                 ],
                 const SizedBox(height: 8),

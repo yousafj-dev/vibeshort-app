@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:vibeshort/models/vibe_notification.dart';
 import 'package:vibeshort/models/vibe_user.dart';
 import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/models/vibe_comment.dart';
@@ -28,6 +29,9 @@ class FirestoreService {
   CollectionReference get _videos => _dbSafe.collection('vibeshort_videos');
 
   CollectionReference get _users => _dbSafe.collection('vibeshort_users');
+
+  CollectionReference get _notifications =>
+      _dbSafe.collection('vibeshort_notifications');
 
   CollectionReference _followingCol(String uid) =>
       _users.doc(uid).collection('following');
@@ -182,6 +186,8 @@ class FirestoreService {
   // ---------------------------------------------------------------
 
   /// Toggle like for the current user. Returns the new liked state.
+  /// A fresh like (not an unlike) also drops a notification in the
+  /// video owner's Inbox.
   Future<bool> toggleLike(VibeVideo video) async {
     final myUid = AuthService.instance.uid;
     if (myUid == null) throw Exception('Please log in first.');
@@ -198,6 +204,12 @@ class FirestoreService {
           'likes': FieldValue.increment(1),
           'likedBy': FieldValue.arrayUnion([myUid]),
         });
+        await createNotification(
+          recipientId: video.uid,
+          type: 'like',
+          videoId: video.id,
+          videoThumb: video.thumbUrl.isEmpty ? null : video.thumbUrl,
+        );
       }
       return !liked;
     } catch (e) {
@@ -221,7 +233,7 @@ class FirestoreService {
   }
 
   Future<void> addComment({
-    required String videoId,
+    required VibeVideo video,
     required String text,
   }) async {
     final auth = AuthService.instance;
@@ -235,16 +247,23 @@ class FirestoreService {
     if (profile != null && profile.username.isNotEmpty) {
       name = profile.username;
     }
-    await _videos.doc(videoId).collection('comments').add(VibeComment(
+    await _videos.doc(video.id).collection('comments').add(VibeComment(
           id: '',
           uid: myUid,
           username: name,
           text: trimmed,
           createdAt: DateTime.now(),
         ).toMap());
-    await _videos.doc(videoId).update({
+    await _videos.doc(video.id).update({
       'commentCount': FieldValue.increment(1),
     });
+    await createNotification(
+      recipientId: video.uid,
+      type: 'comment',
+      videoId: video.id,
+      videoThumb: video.thumbUrl.isEmpty ? null : video.thumbUrl,
+      text: trimmed.length > 80 ? '${trimmed.substring(0, 80)}…' : trimmed,
+    );
   }
 
   // ---------------------------------------------------------------
@@ -278,6 +297,7 @@ class FirestoreService {
         'targetUid': targetUid,
         'createdAt': FieldValue.serverTimestamp(),
       });
+      await createNotification(recipientId: targetUid, type: 'follow');
     } else {
       await _followingCol(myUid).doc(targetUid).delete();
     }
@@ -309,6 +329,169 @@ class FirestoreService {
     } catch (e) {
       debugPrint('followersCount failed: $e');
       return Stream.value(0);
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Following feed, search & hashtags (Phase 2)
+  // ---------------------------------------------------------------
+
+  /// "Following" home tab: videos posted by everyone the signed-in
+  /// user follows, newest first.
+  ///
+  /// The inner video query deliberately avoids orderBy (a
+  /// whereIn + orderBy pair would need a composite index); results
+  /// are sorted client-side instead.
+  Stream<List<VibeVideo>> followingFeed() {
+    final myUid = AuthService.instance.uid;
+    if (myUid == null) return Stream.value(const []);
+    try {
+      return _followingCol(myUid).snapshots().asyncExpand((snap) {
+        final uids = snap.docs.map((d) => d.id).toList();
+        if (uids.isEmpty) return Stream.value(const <VibeVideo>[]);
+        return _videos
+            .where('uid', whereIn: uids.take(30).toList())
+            .snapshots()
+            .map((s) {
+          final list = s.docs.map(VibeVideo.fromDoc).toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          return list;
+        });
+      });
+    } catch (e) {
+      debugPrint('followingFeed failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// All user profiles (bounded) for client-side Discover search —
+  /// Firestore has no substring search, so filtering happens in the
+  /// UI over this list.
+  Stream<List<VibeUser>> allUsers({int limit = 300}) {
+    try {
+      return _users
+          .limit(limit)
+          .snapshots()
+          .map((s) => s.docs.map(VibeUser.fromDoc).toList());
+    } catch (e) {
+      debugPrint('allUsers failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Videos carrying [tag] (compared against each video's effective
+  /// hashtags, so pre-Phase-2 docs without a stored field still
+  /// match via caption parsing). Newest first.
+  Stream<List<VibeVideo>> videosByHashtag(String tag) {
+    final t = tag.toLowerCase();
+    return videoFeed(limit: 300).map((videos) =>
+        videos.where((v) => v.effectiveHashtags.contains(t)).toList());
+  }
+
+  /// One-shot fetch of a single video (Inbox deep-links).
+  Future<VibeVideo?> getVideo(String videoId) async {
+    try {
+      final doc = await _videos.doc(videoId).get();
+      return doc.exists ? VibeVideo.fromDoc(doc) : null;
+    } catch (e) {
+      debugPrint('getVideo failed: $e');
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Notifications / Inbox (Phase 2)
+  // Data: vibeshort_notifications/{id}
+  // ---------------------------------------------------------------
+
+  /// Writes one Inbox entry for [recipientId] from the signed-in
+  /// user. Silently skipped for self-actions (liking/commenting on
+  /// my own video, following myself) and any failure — a
+  /// notification must never break the action that triggered it.
+  Future<void> createNotification({
+    required String recipientId,
+    required String type,
+    String? videoId,
+    String? videoThumb,
+    String? text,
+  }) async {
+    final auth = AuthService.instance;
+    final myUid = auth.uid;
+    if (myUid == null || recipientId.isEmpty || recipientId == myUid) {
+      return;
+    }
+    try {
+      var name = auth.displayName;
+      var photo = auth.photoUrl ?? '';
+      final profile = await getUserProfile(myUid);
+      if (profile != null) {
+        if (profile.username.isNotEmpty) name = profile.username;
+        if (profile.photoUrl.isNotEmpty) photo = profile.photoUrl;
+      }
+      await _notifications.add({
+        'recipientId': recipientId,
+        'actorId': myUid,
+        'actorName': name,
+        'actorPhoto': photo,
+        'type': type,
+        'videoId': videoId,
+        'videoThumb': videoThumb,
+        'text': text,
+        'read': false,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('createNotification failed: $e');
+    }
+  }
+
+  /// My Inbox, newest first. Sorted client-side: a
+  /// where + orderBy query would need a composite index.
+  Stream<List<VibeNotification>> notifications() {
+    final myUid = AuthService.instance.uid;
+    if (myUid == null) return Stream.value(const []);
+    try {
+      return _notifications
+          .where('recipientId', isEqualTo: myUid)
+          .snapshots()
+          .map((s) {
+        final list = s.docs.map(VibeNotification.fromDoc).toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list.take(80).toList();
+      });
+    } catch (e) {
+      debugPrint('notifications failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Live unread count for the Inbox bottom-nav badge.
+  Stream<int> unreadNotificationCount() {
+    return notifications()
+        .map((list) => list.where((n) => !n.read).length);
+  }
+
+  /// Marks every unread notification of mine as read (one batch).
+  /// Called when the Inbox is opened.
+  Future<void> markAllNotificationsRead() async {
+    final myUid = AuthService.instance.uid;
+    if (myUid == null) return;
+    try {
+      final q = await _notifications
+          .where('recipientId', isEqualTo: myUid)
+          .get();
+      final unread = q.docs.where((d) {
+        final data = d.data() as Map<String, dynamic>? ?? {};
+        return (data['read'] ?? false) != true;
+      }).toList();
+      if (unread.isEmpty) return;
+      final batch = _dbSafe.batch();
+      for (final d in unread) {
+        batch.update(d.reference, {'read': true});
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('markAllNotificationsRead failed: $e');
     }
   }
 }

@@ -39,7 +39,11 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            Test build of VibeShort (short video app) — Phase 1 MVP.
+            Test build of VibeShort (short video app) — Phase 2:
+            5-tab navigation (Home, Discover, Create, Inbox, Profile),
+            Following | For You home tabs, Discover search + trending
+            hashtags, tappable hashtags, and Inbox notifications
+            (likes, comments, follows) with an unread badge.
             Install steps: uninstall any old VibeShort build first if one
             is installed, then install this APK and allow "Install unknown
             apps" when asked.
