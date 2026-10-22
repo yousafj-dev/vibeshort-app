@@ -1,0 +1,46 @@
+name: Build VibeShort APK
+
+# Push-based route: full Flutter source lives at the repo root.
+# On every push to main, builds a release APK on GitHub's servers and
+# publishes it as a Release so it can be downloaded as a plain .apk
+# on a phone (no artifact/zip handling needed).
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          channel: 'stable'
+
+      - name: Build release APK
+        run: |
+          flutter pub get
+          flutter build apk --release
+
+      - name: Publish APK as a release download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-apk-${{ github.run_number }}
+          name: VibeShort test APK #${{ github.run_number }}
+          body: |
+            Test build of VibeShort (short video app) — Phase 1 MVP.
+            Install steps: uninstall any old VibeShort build first if one
+            is installed, then install this APK and allow "Install unknown
+            apps" when asked.
+          files: build/app/outputs/flutter-apk/app-release.apk
