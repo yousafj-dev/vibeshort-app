@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/models/vibe_video.dart';
@@ -19,11 +20,17 @@ class PagedVideoFeed extends StatefulWidget {
   final int initialPage;
   final Future<void> Function()? onRefresh;
 
+  /// Forwarded to every card: false suspends playback (the
+  /// shell's Home tab is not selected). Null in the standalone
+  /// viewer, where tab state does not apply.
+  final ValueListenable<bool>? hostVisible;
+
   const PagedVideoFeed({
     super.key,
     required this.videos,
     this.initialPage = 0,
     this.onRefresh,
+    this.hostVisible,
   });
 
   @override
@@ -117,6 +124,7 @@ class _PagedVideoFeedState extends State<PagedVideoFeed> {
         key: ValueKey(videos[i].id),
         video: videos[i],
         isActive: i == _current,
+        hostVisible: widget.hostVisible,
       ),
     );
     if (widget.onRefresh == null) return pager;

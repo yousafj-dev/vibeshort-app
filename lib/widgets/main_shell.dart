@@ -61,7 +61,12 @@ class _MainShellState extends State<MainShell> {
               children: [
                 HomeScreen(key: _homeKey),
                 const DiscoverScreen(),
-                UploadScreen(onPosted: () => setState(() => _index = 0)),
+                UploadScreen(onPosted: () {
+                  // Jumping back to Home after a post must also
+                  // lift the feed's playback suspension.
+                  _homeKey.currentState?.setHostVisible(true);
+                  setState(() => _index = 0);
+                }),
                 InboxScreen(active: _index == 3),
                 const ProfileScreen(),
               ],
@@ -79,6 +84,10 @@ class _MainShellState extends State<MainShell> {
             _homeKey.currentState?.refreshFeed();
             return;
           }
+          // Playback gate: leaving Home suspends the feed video
+          // (position preserved); returning resumes it if it was
+          // playing when we left.
+          _homeKey.currentState?.setHostVisible(i == 0);
           setState(() => _index = i);
         },
         items: [

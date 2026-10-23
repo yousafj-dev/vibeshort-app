@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/models/vibe_video.dart';
@@ -25,6 +26,14 @@ class HomeScreenState extends State<HomeScreen>
   late final TabController _tabs;
   final _forYouKey = GlobalKey<_FeedPaneState>();
 
+  /// Playback gate for the whole home feed, driven by the shell:
+  /// false while a different bottom-nav tab is selected. The
+  /// shell's IndexedStack keeps Home mounted off-tab, so without
+  /// this the current video kept playing (with sound) on other
+  /// tabs. Cards suspend on false and resume on true — but only
+  /// if they were playing when suspended.
+  final ValueNotifier<bool> hostVisible = ValueNotifier<bool>(true);
+
   @override
   void initState() {
     super.initState();
@@ -33,8 +42,14 @@ class HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    hostVisible.dispose();
     _tabs.dispose();
     super.dispose();
+  }
+
+  /// Called by the shell on every bottom-nav switch.
+  void setHostVisible(bool visible) {
+    if (hostVisible.value != visible) hostVisible.value = visible;
   }
 
   /// Item 7: Home tab re-tapped while already on Home — jump to
@@ -53,8 +68,11 @@ class HomeScreenState extends State<HomeScreen>
           TabBarView(
             controller: _tabs,
             children: [
-              const _FeedPane(followingOnly: true),
-              _FeedPane(key: _forYouKey, followingOnly: false),
+              _FeedPane(followingOnly: true, hostVisible: hostVisible),
+              _FeedPane(
+                  key: _forYouKey,
+                  followingOnly: false,
+                  hostVisible: hostVisible),
             ],
           ),
           Positioned(
@@ -100,11 +118,17 @@ class HomeScreenState extends State<HomeScreen>
 }
 
 /// One home tab's feed body. [followingOnly] switches the stream and
-/// the empty state.
+/// the empty state. [hostVisible] is the shell's playback gate,
+/// forwarded to the pager.
 class _FeedPane extends StatefulWidget {
   final bool followingOnly;
+  final ValueListenable<bool> hostVisible;
 
-  const _FeedPane({super.key, required this.followingOnly});
+  const _FeedPane({
+    super.key,
+    required this.followingOnly,
+    required this.hostVisible,
+  });
 
   @override
   State<_FeedPane> createState() => _FeedPaneState();
@@ -178,6 +202,7 @@ class _FeedPaneState extends State<_FeedPane> {
           key: ValueKey('feed_${followingOnly}_$_tick'),
           videos: videos,
           onRefresh: refresh,
+          hostVisible: widget.hostVisible,
         );
       },
     );

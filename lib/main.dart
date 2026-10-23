@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:vibeshort/core/route_observer.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/screens/splash/splash_screen.dart';
@@ -49,6 +50,9 @@ class VibeShortApp extends StatelessWidget {
         title: 'VibeShort',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark(),
+        // Feed cards subscribe to this observer so playback
+        // pauses while another page covers the feed.
+        navigatorObservers: [appRouteObserver],
         home: const SplashScreen(),
       ),
     );

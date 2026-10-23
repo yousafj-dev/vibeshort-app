@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
+import 'package:vibeshort/core/route_observer.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/services/auth_service.dart';
@@ -23,21 +25,63 @@ String playbackUrlFor(String url) {
 
 /// One full-screen video in the feed: player + right rail
 /// (avatar / like / comment / share) + caption block.
+///
+/// Playback suspension (bug fix): the shell keeps every tab
+/// mounted in an IndexedStack, so a feed video used to keep
+/// playing — sound included — after the user left Home, and a
+/// pushed page (profile, hashtag, upload) never stopped it
+/// either. Playback is now suspended while ANY blocker in
+/// [_blockers] is present:
+///  - 'tab': the shell says the Home tab is not selected
+///    (drives [VideoCard.hostVisible]);
+///  - 'route': a page route covers this card's route
+///    (RouteAware via [appRouteObserver]);
+///  - 'lifecycle': the app is backgrounded.
+/// Suspending only pauses — the controller is never disposed or
+/// re-seeked — and when the LAST blocker clears, playback
+/// resumes from the preserved position ONLY if the video was
+/// playing when the first blocker arrived, so a manual
+/// single-tap pause survives leaving and returning.
 class VideoCard extends StatefulWidget {
   final VibeVideo video;
   final bool isActive;
 
-  const VideoCard({super.key, required this.video, required this.isActive});
+  /// Driven by the shell through the home feed: false while a
+  /// different bottom-nav tab is selected. Null outside the
+  /// shell feed (the standalone viewer), where tab state does
+  /// not apply.
+  final ValueListenable<bool>? hostVisible;
+
+  const VideoCard({
+    super.key,
+    required this.video,
+    required this.isActive,
+    this.hostVisible,
+  });
 
   @override
   State<VideoCard> createState() => _VideoCardState();
 }
 
-class _VideoCardState extends State<VideoCard> {
+class _VideoCardState extends State<VideoCard>
+    with WidgetsBindingObserver, RouteAware {
   VideoPlayerController? _ctrl;
   bool _ready = false;
   bool _failed = false;
   bool _showPlayIcon = false;
+
+  /// Active playback blockers — see the [VideoCard] doc.
+  final Set<String> _blockers = {};
+
+  /// Captured when the first blocker arrives: was the video
+  /// playing (or about to autoplay as the active page)? Only
+  /// then does clearing the last blocker resume playback.
+  bool _resumeWhenUnblocked = false;
+
+  /// Double-tap like: tap point of the current heart burst, and
+  /// a counter so every burst restarts its animation.
+  Offset? _burstAt;
+  int _burstId = 0;
 
   // Fix round, item 3 (feed long-press menu) state.
   double _speed = 1.0;
@@ -57,7 +101,87 @@ class _VideoCardState extends State<VideoCard> {
     super.initState();
     _liked = widget.video.likedByMe(AuthService.instance.uid);
     _likes = widget.video.likes;
+    WidgetsBinding.instance.addObserver(this);
+    final hostVisible = widget.hostVisible;
+    if (hostVisible != null) {
+      hostVisible.addListener(_onHostVisibleChanged);
+      if (!hostVisible.value) _addBlocker('tab');
+    }
     _initPlayer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe to this card's enclosing route: a page pushed on
+    // top of it (profile, hashtag page, settings...) suspends
+    // playback until it pops again.
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      appRouteObserver.subscribe(this, route);
+    }
+  }
+
+  @override
+  void didPushNext() => _addBlocker('route');
+
+  @override
+  void didPopNext() => _removeBlocker('route');
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _removeBlocker('lifecycle');
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _addBlocker('lifecycle');
+    }
+  }
+
+  void _onHostVisibleChanged() {
+    final hostVisible = widget.hostVisible;
+    if (hostVisible == null) return;
+    if (hostVisible.value) {
+      _removeBlocker('tab');
+    } else {
+      _addBlocker('tab');
+    }
+  }
+
+  /// Suspend playback for [reason]. Only the FIRST blocker
+  /// captures the was-playing state and pauses; later blockers
+  /// just stack, so overlapping suspensions (tab switch while a
+  /// page is open, backgrounding on top of that) all have to
+  /// clear before anything resumes.
+  void _addBlocker(String reason) {
+    if (!_blockers.add(reason)) return;
+    if (_blockers.length > 1) return;
+    final ctrl = _ctrl;
+    if (ctrl != null && _ready) {
+      _resumeWhenUnblocked = ctrl.value.isPlaying;
+      if (_resumeWhenUnblocked) ctrl.pause();
+    } else {
+      // Player not ready yet: the active page would autoplay on
+      // init, so remember to start it once unblocked (init
+      // itself checks the blockers before playing).
+      _resumeWhenUnblocked = widget.isActive;
+    }
+  }
+
+  /// Lift one suspension. When the LAST blocker clears, resume
+  /// from the preserved position — but only if the video was
+  /// playing when it was suspended; a manual pause stays paused.
+  void _removeBlocker(String reason) {
+    if (!_blockers.remove(reason)) return;
+    if (_blockers.isNotEmpty) return;
+    final shouldResume = _resumeWhenUnblocked;
+    _resumeWhenUnblocked = false;
+    if (shouldResume && widget.isActive && _ready) {
+      _ctrl?.play();
+      if (_showPlayIcon && mounted) {
+        setState(() => _showPlayIcon = false);
+      }
+    }
   }
 
   Future<void> _initPlayer() async {
@@ -73,7 +197,15 @@ class _VideoCardState extends State<VideoCard> {
         return;
       }
       setState(() => _ready = true);
-      if (widget.isActive) ctrl.play();
+      if (widget.isActive) {
+        if (_blockers.isEmpty) {
+          ctrl.play();
+        } else {
+          // Became ready while suspended (off-tab, covered or
+          // backgrounded): start when the last blocker clears.
+          _resumeWhenUnblocked = true;
+        }
+      }
     } catch (e) {
       debugPrint('VideoCard init failed: $e');
       if (mounted) setState(() => _failed = true);
@@ -91,15 +223,25 @@ class _VideoCardState extends State<VideoCard> {
     }
     if (old.isActive != widget.isActive && _ready) {
       if (widget.isActive) {
-        _ctrl?.play();
+        if (_blockers.isEmpty) {
+          _ctrl?.play();
+        } else {
+          // Swiped to while suspended: play once unblocked.
+          _resumeWhenUnblocked = true;
+        }
       } else {
         _ctrl?.pause();
+        // A page that lost focus must never auto-resume later.
+        _resumeWhenUnblocked = false;
       }
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    appRouteObserver.unsubscribe(this);
+    widget.hostVisible?.removeListener(_onHostVisibleChanged);
     for (final r in _captionRecognizers) {
       r.dispose();
     }
@@ -152,12 +294,33 @@ class _VideoCardState extends State<VideoCard> {
 
   /// Tap on the video: in Clear display mode a tap only brings
   /// the UI back; otherwise it toggles play/pause as before.
+  /// (With onDoubleTap registered, a single tap fires after the
+  /// double-tap window — the standard GestureDetector pattern.)
   void _handleTap() {
     if (_clearDisplay) {
       setState(() => _clearDisplay = false);
       return;
     }
     _togglePlay();
+  }
+
+  /// Double-tap on the video (bug fix): toggles the like exactly
+  /// like the rail heart — like when not liked, unlike when
+  /// already liked — through the same optimistic like path.
+  /// Liking also bursts a heart at the tap point (TikTok style);
+  /// unliking has no burst.
+  void _onDoubleTapDown(TapDownDetails details) {
+    _burstAt = details.localPosition;
+  }
+
+  void _onDoubleTap() {
+    final wasLiked = _liked;
+    _toggleLike();
+    if (!wasLiked) {
+      setState(() => _burstId++);
+    } else if (_burstAt != null) {
+      setState(() => _burstAt = null);
+    }
   }
 
   /// Long-press menu (fix round, item 3): Download, Playback
@@ -435,6 +598,8 @@ class _VideoCardState extends State<VideoCard> {
           // Player (cover-fit) or states
           GestureDetector(
             onTap: _handleTap,
+            onDoubleTapDown: _onDoubleTapDown,
+            onDoubleTap: _onDoubleTap,
             onLongPress: _openFeedMenu,
             child: _failed
                 ? const Center(
@@ -467,6 +632,19 @@ class _VideoCardState extends State<VideoCard> {
             const Center(
               child: Icon(Icons.play_arrow,
                   size: 84, color: Colors.white70),
+            ),
+          // Double-tap heart burst, centred on the tap point.
+          if (_burstAt != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _HeartBurst(
+                  key: ValueKey(_burstId),
+                  center: _burstAt!,
+                  onDone: () {
+                    if (mounted) setState(() => _burstAt = null);
+                  },
+                ),
+              ),
             ),
           // Bottom gradient for caption readability
           if (!_clearDisplay)
@@ -646,6 +824,86 @@ class _VideoCardState extends State<VideoCard> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// TikTok-style heart burst shown at the double-tap point when a
+/// video is liked: pops in with a slight tilt, drifts up a
+/// little, then fades out (~650 ms) and reports [onDone] so the
+/// card can remove it.
+class _HeartBurst extends StatefulWidget {
+  final Offset center;
+  final VoidCallback onDone;
+
+  const _HeartBurst({super.key, required this.center, required this.onDone});
+
+  @override
+  State<_HeartBurst> createState() => _HeartBurstState();
+}
+
+class _HeartBurstState extends State<_HeartBurst>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 650),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) widget.onDone();
+      });
+    _anim.forward();
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        AnimatedBuilder(
+          animation: _anim,
+          builder: (context, _) {
+            final t = _anim.value;
+            // Pop: overshoot to 1.15 by 35%, settle at 1.0.
+            final scale = t < 0.35
+                ? Curves.easeOutBack.transform(t / 0.35) * 1.15
+                : 1.15 - 0.15 * ((t - 0.35) / 0.65);
+            // Fade out over the last 40%.
+            final opacity = t < 0.6 ? 1.0 : 1.0 - (t - 0.6) / 0.4;
+            return Positioned(
+              left: widget.center.dx - 45,
+              top: widget.center.dy - 45 - 14 * t,
+              width: 90,
+              height: 90,
+              child: Opacity(
+                opacity: opacity.clamp(0.0, 1.0),
+                child: Transform.rotate(
+                  angle: -0.16,
+                  child: Transform.scale(
+                    scale: scale,
+                    child: const Icon(
+                      Icons.favorite,
+                      size: 90,
+                      color: Color(0xFFFF3B5C),
+                      shadows: [
+                        Shadow(color: Colors.black54, blurRadius: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
