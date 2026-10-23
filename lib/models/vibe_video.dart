@@ -21,6 +21,16 @@ class VibeVideo {
   /// Name of the sound attached to this video (Phase 1: the default
   /// "Original sound" for every upload).
   final String soundName;
+
+  /// Moderation state (Phase 4, blueprint Sections 5 + 8):
+  /// 'active' | 'removed'. Removed videos are filtered out of
+  /// every feed. Pre-Phase-4 docs have no field and read as
+  /// 'active'.
+  final String moderationStatus;
+
+  /// Play count, shown on the Admin dashboard (blueprint Section
+  /// 5). New uploads start at 0.
+  final int views;
   final DateTime createdAt;
 
   const VibeVideo({
@@ -35,8 +45,12 @@ class VibeVideo {
     this.commentCount = 0,
     this.hashtags = const [],
     this.soundName = 'Original sound',
+    this.moderationStatus = 'active',
+    this.views = 0,
     required this.createdAt,
   });
+
+  bool get isRemoved => moderationStatus == 'removed';
 
   /// Extracts `#tags` from a caption: lowercase, without the '#',
   /// de-duplicated, in first-appearance order.
@@ -92,6 +106,8 @@ class VibeVideo {
           .map((e) => e.toString().toLowerCase())
           .toList(),
       soundName: (d['soundName'] ?? 'Original sound') as String,
+      moderationStatus: (d['moderationStatus'] ?? 'active') as String,
+      views: (d['views'] ?? 0) as int,
       createdAt: ts,
     );
   }
@@ -107,6 +123,8 @@ class VibeVideo {
         'commentCount': commentCount,
         'hashtags': parseHashtags(caption),
         'soundName': soundName,
+        'moderationStatus': 'active',
+        'views': 0,
         'createdAt': FieldValue.serverTimestamp(),
       };
 }

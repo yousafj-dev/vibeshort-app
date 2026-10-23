@@ -4,6 +4,7 @@ import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/home/video_viewer_screen.dart';
+import 'package:vibeshort/screens/admin/admin_panel_screen.dart';
 import 'package:vibeshort/screens/profile/edit_profile_screen.dart';
 import 'package:vibeshort/screens/profile/settings_screen.dart';
 import 'package:vibeshort/screens/wallet/wallet_screen.dart';
@@ -159,6 +160,29 @@ class ProfileScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Phase 4: the Admin panel entry exists ONLY for
+                  // accounts whose Firestore role is 'admin'.
+                  if (profile?.isAdmin ?? false) ...[
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const AdminPanelScreen()),
+                        ),
+                        icon: const Icon(Icons.shield_outlined, size: 18),
+                        label: const Text('Admin panel'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accent,
+                          minimumSize: const Size.fromHeight(46),
+                          side: const BorderSide(color: AppTheme.accent),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const Divider(height: 1, color: Colors.white10),
                   if (vsnap.connectionState == ConnectionState.waiting)

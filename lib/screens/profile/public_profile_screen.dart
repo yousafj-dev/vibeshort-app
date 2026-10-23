@@ -4,9 +4,12 @@ import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/home/video_viewer_screen.dart';
+import 'package:vibeshort/widgets/report_sheet.dart';
 
 /// Public creator profile (Phase 1 basic): info, stats,
-/// Follow/Unfollow and their videos grid.
+/// Follow/Unfollow and their videos grid. Phase 4 adds the safety
+/// actions (blueprint Section 9): Report user and Block / Unblock
+/// in the app-bar overflow menu.
 class PublicProfileScreen extends StatelessWidget {
   final String uid;
 
@@ -17,7 +20,12 @@ class PublicProfileScreen extends StatelessWidget {
     final isMe = uid == AuthService.instance.uid;
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        actions: [
+          if (!isMe) _overflowMenu(context),
+        ],
+      ),
       body: StreamBuilder(
         stream: FirestoreService.instance.userProfile(uid),
         builder: (context, snap) {
@@ -136,6 +144,70 @@ class PublicProfileScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  Widget _overflowMenu(BuildContext context) {
+    return StreamBuilder<bool>(
+      stream: FirestoreService.instance.isBlocked(uid),
+      builder: (context, snap) {
+        final blocked = snap.data ?? false;
+        return PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.white),
+          color: AppTheme.card,
+          onSelected: (value) async {
+            if (value == 'report') {
+              final profile =
+                  await FirestoreService.instance.getUserProfile(uid);
+              if (!context.mounted) return;
+              showReportSheet(
+                context,
+                targetType: 'user',
+                targetId: uid,
+                targetOwnerId: uid,
+                targetLabel: '@${profile?.username ?? 'user'}',
+              );
+            } else if (value == 'block') {
+              final profile =
+                  await FirestoreService.instance.getUserProfile(uid);
+              if (!context.mounted) return;
+              final done = await confirmAndBlockUser(
+                context,
+                targetUid: uid,
+                targetName: '@${profile?.username ?? 'user'}',
+              );
+              if (done && context.mounted) {
+                Navigator.of(context).pop();
+              }
+            } else if (value == 'unblock') {
+              try {
+                await FirestoreService.instance.unblockUser(uid);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('User unblocked.')),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(
+                        e.toString().replaceFirst('Exception: ', ''))));
+              }
+            }
+          },
+          itemBuilder: (ctx) => [
+            const PopupMenuItem(
+              value: 'report',
+              child: Text('Report user',
+                  style: TextStyle(color: Colors.white)),
+            ),
+            PopupMenuItem(
+              value: blocked ? 'unblock' : 'block',
+              child: Text(blocked ? 'Unblock user' : 'Block user',
+                  style: const TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
     );
   }
 

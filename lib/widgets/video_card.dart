@@ -9,6 +9,7 @@ import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/discover/hashtag_videos_screen.dart';
 import 'package:vibeshort/screens/profile/public_profile_screen.dart';
 import 'package:vibeshort/widgets/comments_sheet.dart';
+import 'package:vibeshort/widgets/report_sheet.dart';
 
 /// Lighter Cloudinary delivery for playback: phones record big
 /// files, and the feed only needs a 720p-wide stream. The original
@@ -202,6 +203,66 @@ class _VideoCardState extends State<VideoCard> {
     );
   }
 
+  /// Overflow menu (Phase 4, blueprint Section 9): report this
+  /// video, or block its creator so their videos leave my feeds.
+  void _openMoreMenu() {
+    final video = widget.video;
+    final isMine = video.uid == AuthService.instance.uid;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.flag_outlined,
+                    color: Colors.white),
+                title: const Text('Report video',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  showReportSheet(
+                    context,
+                    targetType: 'video',
+                    targetId: video.id,
+                    targetOwnerId: video.uid,
+                    targetLabel: 'video',
+                  );
+                },
+              ),
+              if (!isMine)
+                ListTile(
+                  leading: const Icon(Icons.block, color: Colors.white),
+                  title: Text('Block @${video.username}',
+                      style: const TextStyle(color: Colors.white)),
+                  onTap: () async {
+                    Navigator.of(sheetCtx).pop();
+                    await confirmAndBlockUser(
+                      context,
+                      targetUid: video.uid,
+                      targetName: '@${video.username}',
+                    );
+                  },
+                ),
+              ListTile(
+                leading:
+                    const Icon(Icons.close, color: Colors.white),
+                title: const Text('Cancel',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () => Navigator.of(sheetCtx).pop(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final video = widget.video;
@@ -338,6 +399,13 @@ class _VideoCardState extends State<VideoCard> {
                   color: Colors.white,
                   label: 'Share',
                   onTap: _share,
+                ),
+                const SizedBox(height: 20),
+                _railButton(
+                  icon: Icons.more_vert,
+                  color: Colors.white,
+                  label: 'More',
+                  onTap: _openMoreMenu,
                 ),
               ],
             ),

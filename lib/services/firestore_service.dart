@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:vibeshort/models/vibe_moderation.dart';
 import 'package:vibeshort/models/vibe_notification.dart';
 import 'package:vibeshort/models/vibe_user.dart';
 import 'package:vibeshort/models/vibe_video.dart';
@@ -94,6 +97,12 @@ class FirestoreService {
       'photoUrl': '',
       'bio': '',
       'email': email,
+      // Phase 4 safety defaults (blueprint Sections 5 + 9). The
+      // role is only ever CHANGED directly in Firestore — no app
+      // UI can grant admin.
+      'role': 'user',
+      'status': 'active',
+      'suspensionReason': '',
       'createdAt': FieldValue.serverTimestamp(),
     });
   }
@@ -120,19 +129,29 @@ class FirestoreService {
   // Videos
   // ---------------------------------------------------------------
 
-  /// Newest-first video feed.
+  /// Newest-first video feed. Phase 4: removed videos and videos
+  /// from creators the signed-in user blocked are filtered out.
   Stream<List<VibeVideo>> videoFeed({int limit = 50}) {
+    _ensureBlockedCache();
     try {
       return _videos
           .orderBy('createdAt', descending: true)
           .limit(limit)
           .snapshots()
-          .map((s) => s.docs.map(VibeVideo.fromDoc).toList());
+          .map((s) => s.docs
+              .map(VibeVideo.fromDoc)
+              .where(_isVisible)
+              .toList());
     } catch (e) {
       debugPrint('videoFeed failed: $e');
       return Stream.value(const []);
     }
   }
+
+  /// Whether [v] may appear in a feed: not removed by moderation
+  /// and not posted by someone the signed-in user blocked.
+  bool _isVisible(VibeVideo v) =>
+      !v.isRemoved && !_blockedIdsCache.contains(v.uid);
 
   /// Videos uploaded by one user, newest first.
   ///
@@ -144,7 +163,10 @@ class FirestoreService {
   Stream<List<VibeVideo>> userVideos(String uid) {
     try {
       return _videos.where('uid', isEqualTo: uid).snapshots().map((s) {
-        final list = s.docs.map(VibeVideo.fromDoc).toList()
+        final list = s.docs
+            .map(VibeVideo.fromDoc)
+            .where((v) => !v.isRemoved)
+            .toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
         return list;
       });
@@ -167,6 +189,13 @@ class FirestoreService {
     var photo = auth.photoUrl ?? '';
     final profile = await getUserProfile(uid);
     if (profile != null) {
+      // Phase 4 (blueprint Section 9): a suspended account cannot
+      // post. The app shell already shows the suspended screen;
+      // this is the service-level backstop.
+      if (profile.isSuspended) {
+        throw Exception(
+            'Your account is suspended. You cannot post videos.');
+      }
       if (profile.username.isNotEmpty) username = profile.username;
       if (profile.photoUrl.isNotEmpty) photo = profile.photoUrl;
     }
@@ -346,6 +375,7 @@ class FirestoreService {
   Stream<List<VibeVideo>> followingFeed() {
     final myUid = AuthService.instance.uid;
     if (myUid == null) return Stream.value(const []);
+    _ensureBlockedCache();
     try {
       return _followingCol(myUid).snapshots().asyncExpand((snap) {
         final uids = snap.docs.map((d) => d.id).toList();
@@ -354,7 +384,10 @@ class FirestoreService {
             .where('uid', whereIn: uids.take(30).toList())
             .snapshots()
             .map((s) {
-          final list = s.docs.map(VibeVideo.fromDoc).toList()
+          final list = s.docs
+              .map(VibeVideo.fromDoc)
+              .where(_isVisible)
+              .toList()
             ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
           return list;
         });
@@ -777,5 +810,630 @@ class FirestoreService {
     } catch (e) {
       debugPrint('recordReferral failed: $e');
     }
+  }
+
+  // ---------------------------------------------------------------
+  // Safety: reports & blocks (Phase 4)
+  // Data: vibeshort_reports/{id}, vibeshort_blocks/{id}
+  //
+  // Blueprint Section 9 (report + block mechanisms) and Section 8
+  // (reports schema). Blocks are stored as flat docs
+  // `{blocker_id}_{blocked_id}`; a blocked creator's videos are
+  // filtered out of every feed the blocker sees.
+  // ---------------------------------------------------------------
+
+  CollectionReference get _reports => _dbSafe.collection('vibeshort_reports');
+
+  CollectionReference get _blocks => _dbSafe.collection('vibeshort_blocks');
+
+  CollectionReference get _auditLogs =>
+      _dbSafe.collection('vibeshort_audit_logs');
+
+  CollectionReference get _settingsCol =>
+      _dbSafe.collection('vibeshort_settings');
+
+  /// In-memory cache of the creators the signed-in user blocked,
+  /// kept fresh by a snapshot listener so feed filters stay cheap.
+  Set<String> _blockedIdsCache = {};
+  String? _blockedCacheUid;
+  StreamSubscription<QuerySnapshot>? _blockedSub;
+
+  void _ensureBlockedCache() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) {
+      _blockedIdsCache = {};
+      return;
+    }
+    if (_blockedCacheUid == uid) return;
+    _blockedCacheUid = uid;
+    _blockedIdsCache = {};
+    _blockedSub?.cancel();
+    try {
+      _blockedSub = _blocks
+          .where('blocker_id', isEqualTo: uid)
+          .snapshots()
+          .listen((s) {
+        _blockedIdsCache = s.docs
+            .map((d) =>
+                ((d.data() as Map<String, dynamic>? ?? {})['blocked_id'] ??
+                        '')
+                    .toString())
+            .where((id) => id.isNotEmpty)
+            .toSet();
+      }, onError: (Object e) => debugPrint('blocked cache failed: $e'));
+    } catch (e) {
+      debugPrint('blocked cache setup failed: $e');
+    }
+  }
+
+  /// Whether the signed-in user has blocked [targetUid] (live).
+  Stream<bool> isBlocked(String targetUid) {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(false);
+    try {
+      return _blocks
+          .doc('${uid}_$targetUid')
+          .snapshots()
+          .map((d) => d.exists);
+    } catch (e) {
+      debugPrint('isBlocked failed: $e');
+      return Stream.value(false);
+    }
+  }
+
+  /// Blocks [targetUid]: their videos disappear from my feeds and
+  /// I stop following them.
+  Future<void> blockUser(String targetUid) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    if (targetUid == uid) {
+      throw Exception('You cannot block your own account.');
+    }
+    await _blocks.doc('${uid}_$targetUid').set({
+      'blocker_id': uid,
+      'blocked_id': targetUid,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+    _blockedIdsCache = {..._blockedIdsCache, targetUid};
+    try {
+      await setFollowing(targetUid, false);
+    } catch (_) {
+      // Unfollow is best-effort; the block itself already stands.
+    }
+  }
+
+  Future<void> unblockUser(String targetUid) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    await _blocks.doc('${uid}_$targetUid').delete();
+    _blockedIdsCache = {..._blockedIdsCache}..remove(targetUid);
+  }
+
+  /// Submits a report (blueprint Section 9). One open report per
+  /// reporter per target: a repeat submit quietly succeeds without
+  /// creating a duplicate queue entry.
+  Future<void> submitReport({
+    required String targetType,
+    required String targetId,
+    required String targetOwnerId,
+    required String reason,
+  }) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    final existing = await _reports
+        .where('reporter_id', isEqualTo: uid)
+        .where('target_id', isEqualTo: targetId)
+        .where('status', isEqualTo: VibeReport.statusOpen)
+        .limit(1)
+        .get();
+    if (existing.docs.isNotEmpty) return;
+    await _reports.add({
+      'reporter_id': uid,
+      'target_type': targetType,
+      'target_id': targetId,
+      'target_owner_id': targetOwnerId,
+      'reason': reason,
+      'status': VibeReport.statusOpen,
+      'resolution': '',
+      'resolved_by': '',
+      'resolved_at': null,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Admin panel (Phase 4)
+  // Blueprint Section 5 modules + Section 9 moderation. EVERY
+  // action first verifies the signed-in user's role in Firestore
+  // ([_assertAdmin]) and writes an audit entry
+  // (`vibeshort_audit_logs`). Balance changes go ONLY through
+  // ledger entries — the same rule as Phase 3: approving a
+  // withdrawal flips its hold entry to 'paid', rejecting flips it
+  // to 'rejected'; the wallet cache is refreshed in the same
+  // batch from the recomputed ledger.
+  // ---------------------------------------------------------------
+
+  /// Live admin check for UI gating: true only while the signed-in
+  /// user's own doc carries role == 'admin'.
+  Stream<bool> myIsAdmin() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(false);
+    return userProfile(uid).map((p) => p?.isAdmin ?? false);
+  }
+
+  /// Hard gate used by every admin action: re-reads the caller's
+  /// own profile doc and refuses when the role is not admin.
+  Future<String> _assertAdmin() async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    final profile = await getUserProfile(uid);
+    if (profile == null || !profile.isAdmin) {
+      throw Exception('Admin access required.');
+    }
+    return uid;
+  }
+
+  /// Appends one audit entry. Called inside the same flow as the
+  /// action it records (blueprint Section 5: audit trail).
+  Future<void> _writeAudit(
+    String adminId, {
+    required String action,
+    required String targetType,
+    required String targetId,
+    String reason = '',
+  }) async {
+    await _auditLogs.add({
+      'admin_id': adminId,
+      'action': action,
+      'target_type': targetType,
+      'target_id': targetId,
+      'reason': reason,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // ---- Dashboard ----
+
+  Future<int> _countAll(CollectionReference col) async {
+    final agg = await col.count().get();
+    return agg.count ?? 0;
+  }
+
+  Future<int> _countWhere(
+      CollectionReference col, String field, Object value) async {
+    final agg = await col.where(field, isEqualTo: value).count().get();
+    return agg.count ?? 0;
+  }
+
+  /// Dashboard totals (blueprint Section 5: user totals, uploads,
+  /// views, reports). Views are summed over a bounded recent slice
+  /// of videos (no per-view counter collection exists).
+  Future<Map<String, int>> adminDashboardTotals() async {
+    await _assertAdmin();
+    final results = await Future.wait([
+      _countAll(_users),
+      _countAll(_videos),
+      _countWhere(_reports, 'status', VibeReport.statusOpen),
+      _countWhere(_withdrawalRequests, 'status',
+          VibeWithdrawal.statusPendingReview),
+    ]);
+    var views = 0;
+    try {
+      final snap = await _videos.limit(500).get();
+      for (final d in snap.docs) {
+        final data = d.data() as Map<String, dynamic>? ?? {};
+        views += (data['views'] as num?)?.toInt() ?? 0;
+      }
+    } catch (e) {
+      debugPrint('adminDashboardTotals views failed: $e');
+    }
+    return {
+      'users': results[0],
+      'videos': results[1],
+      'openReports': results[2],
+      'pendingWithdrawals': results[3],
+      'views': views,
+    };
+  }
+
+  // ---- Reports queue & video moderation ----
+
+  /// All reports, open first then newest (client-side ordering —
+  /// where + orderBy would need a composite index).
+  Stream<List<VibeReport>> adminReports() {
+    try {
+      return _reports.limit(300).snapshots().map((s) {
+        final list = s.docs.map(VibeReport.fromDoc).toList()
+          ..sort((a, b) {
+            if (a.isOpen != b.isOpen) return a.isOpen ? -1 : 1;
+            return b.createdAt.compareTo(a.createdAt);
+          });
+        return list;
+      });
+    } catch (e) {
+      debugPrint('adminReports failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Open reports for one target (video moderation actions act on
+  /// the video's whole open queue).
+  Future<List<QueryDocumentSnapshot>> _openReportsFor(
+      String targetType, String targetId) async {
+    final q = await _reports
+        .where('target_type', isEqualTo: targetType)
+        .where('target_id', isEqualTo: targetId)
+        .where('status', isEqualTo: VibeReport.statusOpen)
+        .get();
+    return q.docs;
+  }
+
+  /// Resolves or dismisses one report, recording the decision
+  /// reason (blueprint Section 5: "decision reason ... audit
+  /// trail").
+  Future<void> resolveReport(
+    VibeReport report, {
+    required bool dismiss,
+    required String reason,
+  }) async {
+    final adminId = await _assertAdmin();
+    final status =
+        dismiss ? VibeReport.statusDismissed : VibeReport.statusResolved;
+    await _reports.doc(report.id).update({
+      'status': status,
+      'resolution': reason,
+      'resolved_by': adminId,
+      'resolved_at': FieldValue.serverTimestamp(),
+    });
+    await _writeAudit(
+      adminId,
+      action: dismiss ? 'report_dismiss' : 'report_resolve',
+      targetType: 'report',
+      targetId: report.id,
+      reason: reason,
+    );
+  }
+
+  /// Video moderation — Keep: the video stays; its open reports
+  /// are dismissed with the review decision recorded.
+  Future<void> keepVideo(String videoId, {required String reason}) async {
+    final adminId = await _assertAdmin();
+    final open = await _openReportsFor('video', videoId);
+    final batch = _dbSafe.batch();
+    for (final d in open) {
+      batch.update(d.reference, {
+        'status': VibeReport.statusDismissed,
+        'resolution': reason,
+        'resolved_by': adminId,
+        'resolved_at': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    await _writeAudit(
+      adminId,
+      action: 'video_keep',
+      targetType: 'video',
+      targetId: videoId,
+      reason: reason,
+    );
+  }
+
+  /// Video moderation — Remove: moderation_status becomes
+  /// 'removed', which filters the video out of every feed; its
+  /// open reports are resolved as actioned.
+  Future<void> removeVideo(String videoId, {required String reason}) async {
+    final adminId = await _assertAdmin();
+    await _videos.doc(videoId).update({'moderationStatus': 'removed'});
+    final open = await _openReportsFor('video', videoId);
+    if (open.isNotEmpty) {
+      final batch = _dbSafe.batch();
+      for (final d in open) {
+        batch.update(d.reference, {
+          'status': VibeReport.statusResolved,
+          'resolution': 'Video removed. $reason'.trim(),
+          'resolved_by': adminId,
+          'resolved_at': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+    await _writeAudit(
+      adminId,
+      action: 'video_remove',
+      targetType: 'video',
+      targetId: videoId,
+      reason: reason,
+    );
+  }
+
+  // ---- User management ----
+
+  /// Suspends an account with a recorded reason (blueprint
+  /// Section 5). The suspended user sees the suspended screen and
+  /// cannot post.
+  Future<void> suspendUser(String targetUid,
+      {required String reason}) async {
+    final adminId = await _assertAdmin();
+    if (targetUid == adminId) {
+      throw Exception('You cannot suspend your own admin account.');
+    }
+    await _users.doc(targetUid).set(
+      {
+        'status': 'suspended',
+        'suspensionReason': reason,
+        'suspendedBy': adminId,
+        'suspendedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await _writeAudit(
+      adminId,
+      action: 'user_suspend',
+      targetType: 'user',
+      targetId: targetUid,
+      reason: reason,
+    );
+  }
+
+  Future<void> restoreUser(String targetUid) async {
+    final adminId = await _assertAdmin();
+    await _users.doc(targetUid).set(
+      {
+        'status': 'active',
+        'suspensionReason': '',
+        'restoredBy': adminId,
+        'restoredAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await _writeAudit(
+      adminId,
+      action: 'user_restore',
+      targetType: 'user',
+      targetId: targetUid,
+    );
+  }
+
+  // ---- Withdrawals review ----
+
+  /// All withdrawal requests for the Admin panel, pending review
+  /// first, then newest.
+  Stream<List<VibeWithdrawal>> adminWithdrawals() {
+    try {
+      return _withdrawalRequests.limit(200).snapshots().map((s) {
+        final list = s.docs.map(VibeWithdrawal.fromDoc).toList()
+          ..sort((a, b) {
+            final ap = a.status == VibeWithdrawal.statusPendingReview;
+            final bp = b.status == VibeWithdrawal.statusPendingReview;
+            if (ap != bp) return ap ? -1 : 1;
+            return b.createdAt.compareTo(a.createdAt);
+          });
+        return list;
+      });
+    } catch (e) {
+      debugPrint('adminWithdrawals failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// All referrals for the Admin panel, newest first.
+  Stream<List<VibeReferral>> adminReferrals() {
+    try {
+      return _referrals.limit(300).snapshots().map((s) {
+        final list = s.docs.map(VibeReferral.fromDoc).toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list;
+      });
+    } catch (e) {
+      debugPrint('adminReferrals failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// The single ledger hold entry created with a withdrawal
+  /// request (type 'withdrawal', reference = request id).
+  Future<QueryDocumentSnapshot?> _withdrawalHold(String requestId) async {
+    final q = await _transactions
+        .where('type', isEqualTo: 'withdrawal')
+        .where('reference', isEqualTo: requestId)
+        .limit(1)
+        .get();
+    return q.docs.isEmpty ? null : q.docs.first;
+  }
+
+  /// Refreshes a wallet doc's cached balances inside [batch],
+  /// recomputed from the full ledger with [statusOverrides]
+  /// applied (the batch's own writes are not visible to reads
+  /// yet, so the pending hold flip is applied in memory).
+  Future<void> _refreshWalletCacheInBatch(
+    WriteBatch batch,
+    String uid, {
+    Map<String, String> statusOverrides = const {},
+  }) async {
+    final snap = await _transactions.where('user_id', isEqualTo: uid).get();
+    final txs = snap.docs.map((d) {
+      final t = VibeTransaction.fromDoc(d);
+      final override = statusOverrides[t.id];
+      if (override == null) return t;
+      return VibeTransaction(
+        id: t.id,
+        userId: t.userId,
+        type: t.type,
+        amount: t.amount,
+        currency: t.currency,
+        status: override,
+        idempotencyKey: t.idempotencyKey,
+        reference: t.reference,
+        createdAt: t.createdAt,
+      );
+    }).toList();
+    final b = WalletBalances.fromTransactions(txs);
+    batch.set(
+      _wallets.doc(uid),
+      {
+        'user_id': uid,
+        'currency': WalletRules.currency,
+        'cached_pending': b.pending,
+        'cached_available': b.available,
+        'cached_paid': b.paid,
+        'updated_at': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Approves a pending withdrawal (blueprint Sections 4 + 5):
+  /// records the provider reference, flips the request to 'paid'
+  /// and its ledger hold to 'paid' in one batch. Idempotent: an
+  /// already-reviewed request is left untouched, so a double tap
+  /// can never pay twice.
+  Future<void> approveWithdrawal(
+    VibeWithdrawal w, {
+    required String providerReference,
+  }) async {
+    final adminId = await _assertAdmin();
+    final reqRef = _withdrawalRequests.doc(w.id);
+    final fresh = await reqRef.get();
+    if (!fresh.exists) throw Exception('Request not found.');
+    final current = VibeWithdrawal.fromDoc(fresh);
+    if (current.status != VibeWithdrawal.statusPendingReview) return;
+    final hold = await _withdrawalHold(w.id);
+    if (hold == null) {
+      throw Exception('Ledger hold entry not found for this request.');
+    }
+    final batch = _dbSafe.batch();
+    batch.update(reqRef, {
+      'status': VibeWithdrawal.statusPaid,
+      'provider_reference': providerReference,
+      'reviewed_by': adminId,
+      'reviewed_at': FieldValue.serverTimestamp(),
+    });
+    batch.update(hold.reference, {'status': 'paid'});
+    await _refreshWalletCacheInBatch(batch, current.userId,
+        statusOverrides: {hold.id: 'paid'});
+    await batch.commit();
+    await _writeAudit(
+      adminId,
+      action: 'withdrawal_approve',
+      targetType: 'withdrawal',
+      targetId: w.id,
+      reason: 'Provider reference: $providerReference',
+    );
+  }
+
+  /// Rejects a pending withdrawal: the request is marked rejected
+  /// with the reason and the ledger hold flips to 'rejected',
+  /// which releases the held funds back to the user's available
+  /// balance (ledger-derived, exactly as Phase 3 defined).
+  Future<void> rejectWithdrawal(
+    VibeWithdrawal w, {
+    required String reason,
+  }) async {
+    final adminId = await _assertAdmin();
+    final reqRef = _withdrawalRequests.doc(w.id);
+    final fresh = await reqRef.get();
+    if (!fresh.exists) throw Exception('Request not found.');
+    final current = VibeWithdrawal.fromDoc(fresh);
+    if (current.status != VibeWithdrawal.statusPendingReview) return;
+    final hold = await _withdrawalHold(w.id);
+    if (hold == null) {
+      throw Exception('Ledger hold entry not found for this request.');
+    }
+    final batch = _dbSafe.batch();
+    batch.update(reqRef, {
+      'status': VibeWithdrawal.statusRejected,
+      'review_reason': reason,
+      'reviewed_by': adminId,
+      'reviewed_at': FieldValue.serverTimestamp(),
+    });
+    batch.update(hold.reference, {'status': 'rejected'});
+    await _refreshWalletCacheInBatch(batch, current.userId,
+        statusOverrides: {hold.id: 'rejected'});
+    await batch.commit();
+    await _writeAudit(
+      adminId,
+      action: 'withdrawal_reject',
+      targetType: 'withdrawal',
+      targetId: w.id,
+      reason: reason,
+    );
+  }
+
+  // ---- Referral controls ----
+
+  /// Marks a referral ineligible (blueprint Section 5: track
+  /// referrals, detect abuse, reverse ineligible rewards). Phase
+  /// 3 created no reward money, so this records the status change
+  /// plus the audit entry; if a reward transaction ever exists
+  /// for it, its id stays on the referral doc for reversal.
+  Future<void> markReferralIneligible(
+    VibeReferral referral, {
+    required String reason,
+  }) async {
+    final adminId = await _assertAdmin();
+    await _referrals.doc(referral.id).update({
+      'qualification_status': 'rejected',
+      'reviewed_by': adminId,
+      'reviewed_at': FieldValue.serverTimestamp(),
+    });
+    await _writeAudit(
+      adminId,
+      action: 'referral_ineligible',
+      targetType: 'referral',
+      targetId: referral.id,
+      reason: reason,
+    );
+  }
+
+  // ---- Audit log & app settings ----
+
+  /// The audit trail, newest first (read-only in the panel).
+  Stream<List<VibeAuditLog>> auditLogs() {
+    try {
+      return _auditLogs.limit(200).snapshots().map((s) {
+        final list = s.docs.map(VibeAuditLog.fromDoc).toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list;
+      });
+    } catch (e) {
+      debugPrint('auditLogs failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Live app settings (maintenance notice). Emits defaults when
+  /// the doc does not exist or Firebase is not ready.
+  Stream<VibeSettings> appSettings() {
+    try {
+      return _settingsCol
+          .doc('app')
+          .snapshots()
+          .map((d) => d.exists ? VibeSettings.fromDoc(d) : const VibeSettings());
+    } catch (e) {
+      debugPrint('appSettings failed: $e');
+      return Stream.value(const VibeSettings());
+    }
+  }
+
+  Future<void> updateAppSettings({
+    required bool maintenanceOn,
+    required String maintenanceNotice,
+  }) async {
+    final adminId = await _assertAdmin();
+    await _settingsCol.doc('app').set({
+      'maintenance_on': maintenanceOn,
+      'maintenance_notice': maintenanceNotice.trim(),
+      'updated_by': adminId,
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+    await _writeAudit(
+      adminId,
+      action: 'settings_update',
+      targetType: 'settings',
+      targetId: 'app',
+      reason: maintenanceOn
+          ? 'Maintenance notice ON: ${maintenanceNotice.trim()}'
+          : 'Maintenance notice OFF',
+    );
   }
 }
