@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/models/vibe_notification.dart';
+import 'package:vibeshort/models/vibe_user.dart';
+import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/home/video_viewer_screen.dart';
 import 'package:vibeshort/screens/profile/public_profile_screen.dart';
@@ -58,19 +60,42 @@ class _InboxScreenState extends State<InboxScreen> {
     );
   }
 
+  /// Settings pack: notification-type prefs (Settings → In-app
+  /// notifications). A type whose toggle is off is filtered out
+  /// of the list. Unknown types always show.
+  bool _typeEnabled(VibeNotification n, VibeUser? prefs) {
+    if (prefs == null) return true;
+    return switch (n.type) {
+      'like' => prefs.notifLikes,
+      'comment' => prefs.notifComments,
+      'follow' => prefs.notifFollows,
+      _ => true,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final myUid = AuthService.instance.uid;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: const Text('Inbox')),
-      body: StreamBuilder<List<VibeNotification>>(
-        stream: FirestoreService.instance.notifications(),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
-                child: CircularProgressIndicator(color: AppTheme.accent));
-          }
-          final items = snap.data ?? const <VibeNotification>[];
+      body: StreamBuilder<VibeUser?>(
+        stream: myUid == null
+            ? Stream.value(null)
+            : FirestoreService.instance.userProfile(myUid),
+        builder: (context, psnap) {
+          final prefs = psnap.data;
+          return StreamBuilder<List<VibeNotification>>(
+            stream: FirestoreService.instance.notifications(),
+            builder: (context, snap) {
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(
+                    child:
+                        CircularProgressIndicator(color: AppTheme.accent));
+              }
+              final items = (snap.data ?? const <VibeNotification>[])
+                  .where((n) => _typeEnabled(n, prefs))
+                  .toList();
           for (final n in items) {
             if (!n.read) _sessionUnread.add(n.id);
           }
@@ -102,9 +127,11 @@ class _InboxScreenState extends State<InboxScreen> {
               ),
             );
           }
-          return ListView.builder(
-            itemCount: items.length,
-            itemBuilder: (context, i) => _row(context, items[i]),
+              return ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (context, i) => _row(context, items[i]),
+              );
+            },
           );
         },
       ),

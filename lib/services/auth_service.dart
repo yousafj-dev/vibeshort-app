@@ -178,6 +178,65 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Re-proves the user's identity with their current password —
+  /// required by Firebase before sensitive operations (password
+  /// change, account deletion). Throws a friendly Exception.
+  Future<void> reauthenticate(String currentPassword) async {
+    _ensureReady();
+    final u = _user;
+    final email = u?.email;
+    if (u == null || email == null) {
+      throw Exception('Please log in first.');
+    }
+    try {
+      final cred = EmailAuthProvider.credential(
+        email: email,
+        password: currentPassword,
+      );
+      await u.reauthenticateWithCredential(cred);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+        throw Exception('Current password is incorrect.');
+      }
+      throw Exception(_friendly(e));
+    }
+  }
+
+  /// Changes the account password after a successful
+  /// [reauthenticate] with the current one.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    _ensureReady();
+    if (newPassword.length < 6) {
+      throw Exception('New password must be at least 6 characters.');
+    }
+    await reauthenticate(currentPassword);
+    try {
+      await _user!.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_friendly(e));
+    }
+  }
+
+  /// Deletes the FirebaseAuth user itself. Call AFTER the
+  /// account's Firestore data has been removed and a fresh
+  /// [reauthenticate] — Firebase requires a recent login for
+  /// deletion.
+  Future<void> deleteCurrentUser() async {
+    _ensureReady();
+    final u = _user;
+    if (u == null) throw Exception('Please log in first.');
+    try {
+      await u.delete();
+    } on FirebaseAuthException catch (e) {
+      throw Exception(_friendly(e));
+    }
+    _user = null;
+    notifyListeners();
+  }
+
   /// The ONLY sign-out path in the app (explicit Log out button).
   Future<void> signOut() async {
     if (!firebaseReady) {

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:vibeshort/core/route_observer.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/auth_service.dart';
+import 'package:vibeshort/services/prefs_service.dart';
 import 'package:vibeshort/screens/splash/splash_screen.dart';
 
 /// VibeShort's Firebase config — explicit options in Dart (no
@@ -22,6 +23,9 @@ const FirebaseOptions _firebaseOptions = FirebaseOptions(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Local device prefs (Data Saver) — read synchronously by the
+  // video card, so load them before the first frame.
+  await PrefsService.load();
   // Firebase is optional at runtime: the app still opens (with a
   // friendly offline message on actions) when init fails.
   try {

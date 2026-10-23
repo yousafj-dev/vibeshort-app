@@ -131,8 +131,11 @@ class FirestoreService {
 
   /// Newest-first video feed. Phase 4: removed videos and videos
   /// from creators the signed-in user blocked are filtered out.
+  /// Settings pack: private accounts' videos are filtered out
+  /// too (see [_isVisible]).
   Stream<List<VibeVideo>> videoFeed({int limit = 50}) {
     _ensureBlockedCache();
+    _ensurePrivacyCaches();
     try {
       return _videos
           .orderBy('createdAt', descending: true)
@@ -148,10 +151,21 @@ class FirestoreService {
     }
   }
 
-  /// Whether [v] may appear in a feed: not removed by moderation
-  /// and not posted by someone the signed-in user blocked.
-  bool _isVisible(VibeVideo v) =>
-      !v.isRemoved && !_blockedIdsCache.contains(v.uid);
+  /// Whether [v] may appear in a feed for the signed-in user:
+  /// not removed by moderation, not posted by someone they
+  /// blocked, and — for a private account's video — only when
+  /// the viewer is the owner or follows the owner.
+  bool _isVisible(VibeVideo v) {
+    if (v.isRemoved) return false;
+    if (_blockedIdsCache.contains(v.uid)) return false;
+    final myUid = AuthService.instance.uid;
+    if (v.uid != myUid &&
+        _privateIdsCache.contains(v.uid) &&
+        !_myFollowingCache.contains(v.uid)) {
+      return false;
+    }
+    return true;
+  }
 
   /// Videos uploaded by one user, newest first.
   ///
@@ -469,6 +483,7 @@ class FirestoreService {
     final myUid = AuthService.instance.uid;
     if (myUid == null) return Stream.value(const []);
     _ensureBlockedCache();
+    _ensurePrivacyCaches();
     try {
       return _followingCol(myUid).snapshots().asyncExpand((snap) {
         final uids = snap.docs.map((d) => d.id).toList();
@@ -1528,5 +1543,257 @@ class FirestoreService {
           ? 'Maintenance notice ON: ${maintenanceNotice.trim()}'
           : 'Maintenance notice OFF',
     );
+  }
+
+  // ---------------------------------------------------------------
+  // Settings pack: privacy caches, preferences, activity,
+  // views and account deletion.
+  // ---------------------------------------------------------------
+
+  /// Ids of accounts whose profile is private, kept fresh by a
+  /// snapshot listener so [_isVisible] stays cheap (same pattern
+  /// as the blocked cache above).
+  Set<String> _privateIdsCache = {};
+
+  /// Ids the signed-in user follows, for the same filter.
+  Set<String> _myFollowingCache = {};
+  String? _privacyCacheUid;
+  StreamSubscription<QuerySnapshot>? _privateSub;
+  StreamSubscription<QuerySnapshot>? _followingCacheSub;
+
+  void _ensurePrivacyCaches() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) {
+      _privateIdsCache = {};
+      _myFollowingCache = {};
+      return;
+    }
+    if (_privacyCacheUid == uid) return;
+    _privacyCacheUid = uid;
+    _privateIdsCache = {};
+    _myFollowingCache = {};
+    _privateSub?.cancel();
+    _followingCacheSub?.cancel();
+    try {
+      _privateSub = _users
+          .where('isPrivate', isEqualTo: true)
+          .snapshots()
+          .listen((s) {
+        _privateIdsCache = s.docs.map((d) => d.id).toSet();
+      }, onError: (Object e) => debugPrint('private cache failed: $e'));
+      _followingCacheSub = _followingCol(uid).snapshots().listen((s) {
+        _myFollowingCache = s.docs.map((d) => d.id).toSet();
+      },
+          onError: (Object e) =>
+              debugPrint('following cache failed: $e'));
+    } catch (e) {
+      debugPrint('privacy cache setup failed: $e');
+    }
+  }
+
+  /// Merges settings/preference fields into my profile doc
+  /// (`isPrivate`, `notifLikes`, visibility prefs...).
+  Future<void> updateMySettings(Map<String, dynamic> fields) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    await _users.doc(uid).set(
+      {...fields, 'updatedAt': FieldValue.serverTimestamp()},
+      SetOptions(merge: true),
+    );
+  }
+
+  /// Videos I liked (Activity center), newest first. Removed
+  /// videos are filtered out.
+  Stream<List<VibeVideo>> likedVideos() {
+    final myUid = AuthService.instance.uid;
+    if (myUid == null) return Stream.value(const []);
+    try {
+      return _videos
+          .where('likedBy', arrayContains: myUid)
+          .snapshots()
+          .map((s) {
+        final list = s.docs
+            .map(VibeVideo.fromDoc)
+            .where((v) => !v.isRemoved)
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list;
+      });
+    } catch (e) {
+      debugPrint('likedVideos failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  CollectionReference _historyCol(String uid) =>
+      _users.doc(uid).collection('history');
+
+  /// Records that the signed-in user watched [videoId] now
+  /// (Activity center → Watch history). Best-effort: a failed
+  /// write must never disturb playback.
+  Future<void> recordWatch(String videoId) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null || videoId.isEmpty) return;
+    try {
+      await _historyCol(uid).doc(videoId).set({
+        'videoId': videoId,
+        'watchedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('recordWatch failed: $e');
+    }
+  }
+
+  /// My watch history, most recently watched first (bounded).
+  /// Entries whose video was deleted or removed are skipped.
+  Stream<List<VibeVideo>> watchHistory({int limit = 60}) {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(const []);
+    try {
+      return _historyCol(uid).snapshots().asyncMap((snap) async {
+        final entries = snap.docs.map((d) {
+          final data = d.data() as Map<String, dynamic>? ?? {};
+          final ts = data['watchedAt'];
+          return (
+            id: (data['videoId'] ?? d.id).toString(),
+            at: ts is Timestamp ? ts.toDate() : DateTime(2000),
+          );
+        }).toList()
+          ..sort((a, b) => b.at.compareTo(a.at));
+        final out = <VibeVideo>[];
+        for (final e in entries.take(limit)) {
+          final v = await getVideo(e.id);
+          if (v != null && !v.isRemoved) out.add(v);
+        }
+        return out;
+      });
+    } catch (e) {
+      debugPrint('watchHistory failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Videos already counted as viewed in this app session — the
+  /// view counter moves at most once per video per session.
+  final Set<String> _viewedThisSession = {};
+
+  /// Counts one view of [video] for the Creator dashboard: only
+  /// for a non-owner viewer, only once per session per video.
+  Future<void> recordView(VibeVideo video) async {
+    final myUid = AuthService.instance.uid;
+    if (myUid == null || video.uid == myUid) return;
+    if (!_viewedThisSession.add(video.id)) return;
+    try {
+      await _videos
+          .doc(video.id)
+          .update({'views': FieldValue.increment(1)});
+    } catch (e) {
+      debugPrint('recordView failed: $e');
+    }
+  }
+
+  /// Users I blocked (Settings → Blocked accounts), with their
+  /// profiles resolved.
+  Stream<List<VibeUser>> blockedUsers() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(const []);
+    try {
+      return _blocks
+          .where('blocker_id', isEqualTo: uid)
+          .snapshots()
+          .asyncMap((snap) async {
+        final out = <VibeUser>[];
+        for (final d in snap.docs) {
+          final data = d.data() as Map<String, dynamic>? ?? {};
+          final blockedId = (data['blocked_id'] ?? '').toString();
+          if (blockedId.isEmpty) continue;
+          final profile = await getUserProfile(blockedId);
+          if (profile != null) out.add(profile);
+        }
+        return out;
+      });
+    } catch (e) {
+      debugPrint('blockedUsers failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Profiles of everyone [uid] follows (user-list screens).
+  Stream<List<VibeUser>> followingUsers(String uid) {
+    try {
+      return _followingCol(uid).snapshots().asyncMap((snap) async {
+        final out = <VibeUser>[];
+        for (final d in snap.docs) {
+          final profile = await getUserProfile(d.id);
+          if (profile != null) out.add(profile);
+        }
+        return out;
+      });
+    } catch (e) {
+      debugPrint('followingUsers failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Profiles of everyone who follows [uid]. The follower's uid
+  /// is the parent user doc of each collection-group hit.
+  Stream<List<VibeUser>> followersUsers(String uid) {
+    try {
+      final q = _dbSafe
+          .collectionGroup('following')
+          .where('targetUid', isEqualTo: uid);
+      return q.snapshots().asyncMap((snap) async {
+        final out = <VibeUser>[];
+        final seen = <String>{};
+        for (final d in snap.docs) {
+          final followerUid = d.reference.parent.parent?.id ?? '';
+          if (followerUid.isEmpty || !seen.add(followerUid)) continue;
+          final profile = await getUserProfile(followerUid);
+          if (profile != null) out.add(profile);
+        }
+        return out;
+      });
+    } catch (e) {
+      debugPrint('followersUsers failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Deletes the signed-in user's Firestore data ahead of the
+  /// Auth user deletion (Settings → Delete account): their
+  /// videos (with their comment threads), watch history,
+  /// following list and the profile doc itself. NOTE: the video
+  /// FILES stay in Cloudinary — the unsigned upload preset
+  /// cannot delete files, so only the app-side records go.
+  Future<void> deleteMyAccountData() async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    final db = _dbSafe;
+
+    Future<void> deleteAll(QuerySnapshot snap) async {
+      var batch = db.batch();
+      var n = 0;
+      for (final d in snap.docs) {
+        batch.delete(d.reference);
+        if (++n % 400 == 0) {
+          await batch.commit();
+          batch = db.batch();
+        }
+      }
+      if (n % 400 != 0 || n == 0) await batch.commit();
+    }
+
+    // My videos + their comments.
+    final myVideos = await _videos.where('uid', isEqualTo: uid).get();
+    for (final v in myVideos.docs) {
+      final comments =
+          await _videos.doc(v.id).collection('comments').get();
+      await deleteAll(comments);
+    }
+    await deleteAll(myVideos);
+    // Subcollections of my profile doc + the doc itself.
+    await deleteAll(await _historyCol(uid).get());
+    await deleteAll(await _followingCol(uid).get());
+    await _users.doc(uid).delete();
   }
 }

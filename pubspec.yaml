@@ -30,6 +30,8 @@ dependencies:
   # Editing phase: pick a music file from the device (Flutter 3.27-compatible)
   file_picker: 8.3.7
   path_provider: 2.1.5
+  # Settings pack: render the "Your QR code" profile code.
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

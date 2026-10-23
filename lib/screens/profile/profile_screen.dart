@@ -6,7 +6,9 @@ import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/home/video_viewer_screen.dart';
 import 'package:vibeshort/screens/admin/admin_panel_screen.dart';
 import 'package:vibeshort/screens/profile/edit_profile_screen.dart';
+import 'package:vibeshort/screens/profile/profile_menu_screen.dart';
 import 'package:vibeshort/screens/profile/settings_screen.dart';
+import 'package:vibeshort/screens/profile/user_list_screen.dart';
 import 'package:vibeshort/screens/wallet/wallet_screen.dart';
 import 'package:vibeshort/widgets/own_video_sheet.dart';
 
@@ -32,6 +34,15 @@ class ProfileScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Profile'),
         actions: [
+          // Settings pack: the ☰ side menu (Wallet, Activity
+          // center, Offline videos, QR code, Creator dashboard,
+          // Settings and privacy, Log out).
+          IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ProfileMenuScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => Navigator.of(context).push(
@@ -113,11 +124,31 @@ class ProfileScreen extends StatelessWidget {
                     children: [
                       _stat('${videos.length}', 'Videos'),
                       _countStat(
-                          FirestoreService.instance.followingCount(uid),
-                          'Following'),
+                        FirestoreService.instance.followingCount(uid),
+                        'Following',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => UserListScreen(
+                              title: 'Following',
+                              users: FirestoreService.instance
+                                  .followingUsers(uid),
+                            ),
+                          ),
+                        ),
+                      ),
                       _countStat(
-                          FirestoreService.instance.followersCount(uid),
-                          'Followers'),
+                        FirestoreService.instance.followersCount(uid),
+                        'Followers',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => UserListScreen(
+                              title: 'Followers',
+                              users: FirestoreService.instance
+                                  .followersUsers(uid),
+                            ),
+                          ),
+                        ),
+                      ),
                       _stat('$likesTotal', 'Likes'),
                     ],
                   ),
@@ -244,10 +275,15 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _countStat(Stream<int> stream, String label) {
+  Widget _countStat(Stream<int> stream, String label,
+      {VoidCallback? onTap}) {
     return StreamBuilder<int>(
       stream: stream,
-      builder: (context, snap) => _stat('${snap.data ?? 0}', label),
+      builder: (context, snap) {
+        final stat = _stat('${snap.data ?? 0}', label);
+        if (onTap == null) return stat;
+        return GestureDetector(onTap: onTap, child: stat);
+      },
     );
   }
 

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
+import 'package:vibeshort/models/vibe_user.dart';
 import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/home/video_viewer_screen.dart';
+import 'package:vibeshort/screens/profile/user_list_screen.dart';
 import 'package:vibeshort/widgets/report_sheet.dart';
 
 /// Public creator profile (Phase 1 basic): info, stats,
@@ -98,11 +100,37 @@ class PublicProfileScreen extends StatelessWidget {
                     children: [
                       _stat('${videos.length}', 'Videos'),
                       _countStat(
-                          FirestoreService.instance.followingCount(uid),
-                          'Following'),
+                        FirestoreService.instance.followingCount(uid),
+                        'Following',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => UserListScreen(
+                              title: 'Following',
+                              // Following-list visibility pref
+                              // (settings pack): 'Only me' hides the
+                              // list from everyone but the owner.
+                              hidden: profile.followingVisibility ==
+                                      'Only me' &&
+                                  !isMe,
+                              users: FirestoreService.instance
+                                  .followingUsers(uid),
+                            ),
+                          ),
+                        ),
+                      ),
                       _countStat(
-                          FirestoreService.instance.followersCount(uid),
-                          'Followers'),
+                        FirestoreService.instance.followersCount(uid),
+                        'Followers',
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => UserListScreen(
+                              title: 'Followers',
+                              users: FirestoreService.instance
+                                  .followersUsers(uid),
+                            ),
+                          ),
+                        ),
+                      ),
                       _stat('$likesTotal', 'Likes'),
                     ],
                   ),
@@ -115,29 +143,7 @@ class PublicProfileScreen extends StatelessWidget {
                   ],
                   const SizedBox(height: 20),
                   const Divider(height: 1, color: Colors.white10),
-                  if (videos.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.all(40),
-                      child: Center(
-                        child: Text('No videos yet.',
-                            style: TextStyle(color: AppTheme.muted)),
-                      ),
-                    )
-                  else
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: videos.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        childAspectRatio: 3 / 4,
-                        crossAxisSpacing: 2,
-                        mainAxisSpacing: 2,
-                      ),
-                      itemBuilder: (context, i) =>
-                          _gridTile(context, videos, i),
-                    ),
+                  _videosSection(context, profile, videos, isMe),
                 ],
               );
             },
@@ -227,10 +233,78 @@ class PublicProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _countStat(Stream<int> stream, String label) {
+  Widget _countStat(Stream<int> stream, String label,
+      {VoidCallback? onTap}) {
     return StreamBuilder<int>(
       stream: stream,
-      builder: (context, snap) => _stat('${snap.data ?? 0}', label),
+      builder: (context, snap) {
+        final stat = _stat('${snap.data ?? 0}', label);
+        if (onTap == null) return stat;
+        return GestureDetector(onTap: onTap, child: stat);
+      },
+    );
+  }
+
+  /// The videos area of a public profile. Private accounts
+  /// (settings pack) show their grid only to themselves and
+  /// their followers; everyone else gets the private note.
+  Widget _videosSection(BuildContext context, VibeUser profile,
+      List<VibeVideo> videos, bool isMe) {
+    if (!profile.isPrivate || isMe) return _gridOrEmpty(context, videos);
+    return StreamBuilder<bool>(
+      stream: FirestoreService.instance.isFollowing(profile.uid),
+      builder: (context, snap) {
+        if (snap.data == true) return _gridOrEmpty(context, videos);
+        return const Padding(
+          padding: EdgeInsets.all(40),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 44, color: AppTheme.muted),
+                SizedBox(height: 12),
+                Text(
+                  'This account is private',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Follow this account to see their videos.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.muted),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _gridOrEmpty(BuildContext context, List<VibeVideo> videos) {
+    if (videos.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(40),
+        child: Center(
+          child: Text('No videos yet.',
+              style: TextStyle(color: AppTheme.muted)),
+        ),
+      );
+    }
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: videos.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 3 / 4,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+      ),
+      itemBuilder: (context, i) => _gridTile(context, videos, i),
     );
   }
 

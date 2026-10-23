@@ -5,6 +5,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vibeshort/core/route_observer.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
+import 'package:vibeshort/services/offline_service.dart';
+import 'package:vibeshort/services/prefs_service.dart';
 import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
@@ -17,10 +19,14 @@ import 'package:vibeshort/widgets/report_sheet.dart';
 /// Lighter Cloudinary delivery for playback: phones record big
 /// files, and the feed only needs a 720p-wide stream. The original
 /// file stays untouched in storage. Non-Cloudinary URLs play as-is.
+/// Settings pack: with Data Saver on, an even lighter 540p variant
+/// is used instead.
 String playbackUrlFor(String url) {
   if (!url.contains('/upload/')) return url;
-  return url.replaceFirst(
-      '/upload/', '/upload/q_auto:low,w_720,c_limit,vc_auto/');
+  final variant = PrefsService.dataSaver
+      ? '/upload/q_auto:low,w_540,c_limit,vc_auto/'
+      : '/upload/q_auto:low,w_720,c_limit,vc_auto/';
+  return url.replaceFirst('/upload/', variant);
 }
 
 /// One full-screen video in the feed: player + right rail
@@ -198,6 +204,7 @@ class _VideoCardState extends State<VideoCard>
       }
       setState(() => _ready = true);
       if (widget.isActive) {
+        _onBecameActive();
         if (_blockers.isEmpty) {
           ctrl.play();
         } else {
@@ -223,6 +230,7 @@ class _VideoCardState extends State<VideoCard>
     }
     if (old.isActive != widget.isActive && _ready) {
       if (widget.isActive) {
+        _onBecameActive();
         if (_blockers.isEmpty) {
           _ctrl?.play();
         } else {
@@ -358,6 +366,12 @@ class _VideoCardState extends State<VideoCard>
                 Navigator.of(sheetCtx).pop();
                 downloadVideoAction(context, video);
               }),
+              row(Icons.offline_pin_outlined, 'Watch offline',
+                  subtitle: 'Save inside the app for offline viewing',
+                  onTap: () {
+                Navigator.of(sheetCtx).pop();
+                _downloadOffline();
+              }),
               row(Icons.speed, 'Playback speed',
                   subtitle: '${_speed}x', onTap: () {
                 Navigator.of(sheetCtx).pop();
@@ -458,6 +472,55 @@ class _VideoCardState extends State<VideoCard>
         );
       },
     );
+  }
+
+  /// This card just became the feed's active playing page
+  /// (settings pack): record the watch for Activity center →
+  /// Watch history, and count one view (the service guards:
+  /// non-owner only, once per session per video).
+  void _onBecameActive() {
+    FirestoreService.instance.recordWatch(widget.video.id);
+    FirestoreService.instance.recordView(widget.video);
+  }
+
+  /// Downloads this video into the offline folder with a
+  /// progress dialog (settings pack → Offline videos).
+  Future<void> _downloadOffline() async {
+    final progress = ValueNotifier<double>(0);
+    var dialogOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        title: const Text('Saving offline…'),
+        content: ValueListenableBuilder<double>(
+          valueListenable: progress,
+          builder: (_, value, __) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              LinearProgressIndicator(
+                value: value > 0 ? value : null,
+                color: AppTheme.accent,
+              ),
+              const SizedBox(height: 10),
+              Text('${(value * 100).round()}%',
+                  style: const TextStyle(color: AppTheme.muted)),
+            ],
+          ),
+        ),
+      ),
+    ).then((_) => dialogOpen = false);
+    final msg = await OfflineService.download(
+      widget.video,
+      onProgress: (p) => progress.value = p,
+    );
+    if (!mounted) return;
+    // Only dismiss the progress dialog if it is still up (the
+    // system back button can close it first).
+    if (dialogOpen) Navigator.of(context).pop();
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _togglePlay() {
