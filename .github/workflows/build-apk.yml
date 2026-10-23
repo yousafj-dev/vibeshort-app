@@ -39,24 +39,26 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            Test build of VibeShort (short video app) — Phase 4:
-            Safety layer + Admin panel (blueprint Sections 5, 8, 9).
-            Report any video (More menu on the feed) or any user
-            (menu on their profile) with a reason; block a creator
-            and their videos leave your feeds. Accounts whose
-            Firestore role is 'admin' get an Admin panel (Profile /
-            Settings): dashboard totals, reports queue with
-            Resolve/Dismiss (decision reason recorded), video
-            moderation (Keep/Remove), user suspend/restore with a
-            recorded reason, withdrawal review (approve with a
-            provider reference / reject — balances move only
-            through ledger entries), referral controls, a
-            maintenance-notice setting, and a read-only audit log of
-            every admin action. Suspended accounts see a clear
-            suspended screen and cannot post.
-            Everything from Phase 3 stays: Wallet with the ledger,
-            withdrawal requests, referral codes, 5-tab navigation,
-            Discover, Inbox, Following | For You.
+            Test build of VibeShort (short video app) — Editing phase:
+            filters, effects, trim and music for every video.
+            Record in the app's own camera and the look is LIVE over
+            the preview: all 20 colour filters and the grade effects
+            tint the camera feed in real time (Cinematic also shows
+            its letterbox bars, Frame its white border); structural
+            effects that can't render live on a camera feed say so
+            on screen and are applied exactly at post time. Gallery
+            clips get the same live-look preview on the edit screen,
+            plus trim (start/end sliders, the preview loops the kept
+            segment), device-music mix or mute, and text overlay with
+            position control. On Post, FFmpeg bakes the exact
+            filter/effect chain, trim, music and text into the
+            uploaded video (20 filters, 25 effects); with no edits
+            the original file uploads untouched, and if processing
+            fails the unedited file is never silently posted.
+            Everything from Phase 4 stays: Admin panel + safety
+            (reports, block, suspend, moderation, withdrawal
+            review), Wallet with the ledger and referral codes,
+            5-tab navigation, Discover, Inbox, Following | For You.
             Install steps: uninstall any old VibeShort build first if one
             is installed, then install this APK and allow "Install unknown
             apps" when asked.

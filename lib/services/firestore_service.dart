@@ -179,6 +179,7 @@ class FirestoreService {
   Future<String> addVideo({
     required String videoUrl,
     required String caption,
+    String? soundName,
   }) async {
     final auth = AuthService.instance;
     final uid = auth.uid;
@@ -206,6 +207,11 @@ class FirestoreService {
       uid: uid,
       username: username,
       userPhoto: photo,
+      // Editing phase: a video posted with picked music is named
+      // after that track; everything else keeps the default.
+      soundName: (soundName != null && soundName.trim().isNotEmpty)
+          ? soundName.trim()
+          : 'Original sound',
       createdAt: DateTime.now(),
     ).toMap());
     return doc.id;

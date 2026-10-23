@@ -19,6 +19,15 @@ dependencies:
   shared_preferences: ^2.3.2
   dio: ^5.7.0
   share_plus: ^10.0.0
+  # Editing phase: in-app camera recording (pinned for Flutter 3.27.4 / Dart 3.6)
+  camera: 0.11.1
+  # Editing phase: real video processing (filters / effects / trim /
+  # music mix / text overlay). Maintained fork — the official
+  # ffmpeg_kit_flutter is retired.
+  ffmpeg_kit_flutter_new: 4.6.7
+  # Editing phase: pick a music file from the device (Flutter 3.27-compatible)
+  file_picker: 8.3.7
+  path_provider: 2.1.5
 
 dev_dependencies:
   flutter_test:
@@ -27,3 +36,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # Font used by FFmpeg drawtext for the text overlay.
+    - assets/fonts/DejaVuSans-Bold.ttf
