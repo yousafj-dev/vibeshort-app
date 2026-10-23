@@ -70,7 +70,7 @@ class _PagedVideoFeedState extends State<PagedVideoFeed> {
       // Bouncing physics: the scroll position itself goes
       // negative past the top edge.
       if (_current == 0 && n.metrics.pixels < 0) {
-        final px = (-n.metrics.pixels).clamp(0, _pullCap);
+        final double px = (-n.metrics.pixels).clamp(0.0, _pullCap).toDouble();
         if (px > _pullPx) setState(() => _pullPx = px);
       }
     } else if (n is ScrollEndNotification) {
