@@ -7,16 +7,23 @@ import 'package:vibeshort/widgets/video_feed.dart';
 /// Home: full-screen vertical feed with TikTok-style top tabs —
 /// "Following" (videos from creators I follow) and "For You"
 /// (everything, newest first). For You is the default tab.
+///
+/// Feed refresh (fix round, items 7 + 8): re-tapping the Home tab
+/// in the bottom nav calls [HomeScreenState.refreshFeed], and
+/// pulling down on the first video triggers the same reload per
+/// pane. A refresh bumps the pane's tick, which re-subscribes the
+/// feed stream (a fresh query) and rebuilds the pager at page 0.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
+class HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
+  final _forYouKey = GlobalKey<_FeedPaneState>();
 
   @override
   void initState() {
@@ -30,6 +37,13 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
+  /// Item 7: Home tab re-tapped while already on Home — jump to
+  /// the For You tab and reload its feed from the first video.
+  void refreshFeed() {
+    if (_tabs.index != 1) _tabs.animateTo(1);
+    _forYouKey.currentState?.refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -38,9 +52,9 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           TabBarView(
             controller: _tabs,
-            children: const [
-              _FeedPane(followingOnly: true),
-              _FeedPane(followingOnly: false),
+            children: [
+              const _FeedPane(followingOnly: true),
+              _FeedPane(key: _forYouKey, followingOnly: false),
             ],
           ),
           Positioned(
@@ -87,15 +101,34 @@ class _HomeScreenState extends State<HomeScreen>
 
 /// One home tab's feed body. [followingOnly] switches the stream and
 /// the empty state.
-class _FeedPane extends StatelessWidget {
+class _FeedPane extends StatefulWidget {
   final bool followingOnly;
 
-  const _FeedPane({required this.followingOnly});
+  const _FeedPane({super.key, required this.followingOnly});
+
+  @override
+  State<_FeedPane> createState() => _FeedPaneState();
+}
+
+class _FeedPaneState extends State<_FeedPane> {
+  /// Bumped on every refresh: re-keys the stream subscription and
+  /// the pager so the feed reloads and restarts at the first video.
+  int _tick = 0;
+
+  Future<void> refresh() async {
+    if (!mounted) return;
+    setState(() => _tick++);
+    // Brief beat so the reload (and its spinner) is perceptible —
+    // the fresh stream snapshot follows immediately after.
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+  }
 
   @override
   Widget build(BuildContext context) {
     final fs = FirestoreService.instance;
+    final followingOnly = widget.followingOnly;
     return StreamBuilder<List<VibeVideo>>(
+      key: ValueKey('pane_${followingOnly}_$_tick'),
       stream: followingOnly ? fs.followingFeed() : fs.videoFeed(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
@@ -141,7 +174,11 @@ class _FeedPane extends StatelessWidget {
             ),
           );
         }
-        return PagedVideoFeed(videos: videos);
+        return PagedVideoFeed(
+          key: ValueKey('feed_${followingOnly}_$_tick'),
+          videos: videos,
+          onRefresh: refresh,
+        );
       },
     );
   }

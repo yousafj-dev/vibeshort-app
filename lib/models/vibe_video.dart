@@ -22,6 +22,15 @@ class VibeVideo {
   /// "Original sound" for every upload).
   final String soundName;
 
+  /// Id of the built-in sound attached to this video (fix round),
+  /// e.g. 'sound_backbeat'. Empty for original/device sounds.
+  final String soundId;
+
+  /// Pinned to the top of the creator's profile grid (fix round).
+  /// Older docs have no field and read as unpinned.
+  final bool pinned;
+  final DateTime? pinnedAt;
+
   /// Moderation state (Phase 4, blueprint Sections 5 + 8):
   /// 'active' | 'removed'. Removed videos are filtered out of
   /// every feed. Pre-Phase-4 docs have no field and read as
@@ -45,6 +54,9 @@ class VibeVideo {
     this.commentCount = 0,
     this.hashtags = const [],
     this.soundName = 'Original sound',
+    this.soundId = '',
+    this.pinned = false,
+    this.pinnedAt,
     this.moderationStatus = 'active',
     this.views = 0,
     required this.createdAt,
@@ -106,6 +118,10 @@ class VibeVideo {
           .map((e) => e.toString().toLowerCase())
           .toList(),
       soundName: (d['soundName'] ?? 'Original sound') as String,
+      soundId: (d['soundId'] ?? '') as String,
+      pinned: (d['pinned'] ?? false) as bool,
+      pinnedAt:
+          d['pinnedAt'] is Timestamp ? (d['pinnedAt'] as Timestamp).toDate() : null,
       moderationStatus: (d['moderationStatus'] ?? 'active') as String,
       views: (d['views'] ?? 0) as int,
       createdAt: ts,
@@ -123,6 +139,7 @@ class VibeVideo {
         'commentCount': commentCount,
         'hashtags': parseHashtags(caption),
         'soundName': soundName,
+        'soundId': soundId,
         'moderationStatus': 'active',
         'views': 0,
         'createdAt': FieldValue.serverTimestamp(),

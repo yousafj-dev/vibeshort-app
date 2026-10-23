@@ -167,7 +167,17 @@ class FirestoreService {
             .map(VibeVideo.fromDoc)
             .where((v) => !v.isRemoved)
             .toList()
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          ..sort((a, b) {
+            // Fix round: pinned videos first (most recently
+            // pinned first), then newest first.
+            if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+            if (a.pinned && b.pinned) {
+              final pa = a.pinnedAt ?? a.createdAt;
+              final pb = b.pinnedAt ?? b.createdAt;
+              return pb.compareTo(pa);
+            }
+            return b.createdAt.compareTo(a.createdAt);
+          });
         return list;
       });
     } catch (e) {
@@ -180,6 +190,7 @@ class FirestoreService {
     required String videoUrl,
     required String caption,
     String? soundName,
+    String? soundId,
   }) async {
     final auth = AuthService.instance;
     final uid = auth.uid;
@@ -212,9 +223,85 @@ class FirestoreService {
       soundName: (soundName != null && soundName.trim().isNotEmpty)
           ? soundName.trim()
           : 'Original sound',
+      // Fix round: built-in sound attribution, stored alongside
+      // the display name so the sound can be re-opened later.
+      soundId: soundId ?? '',
       createdAt: DateTime.now(),
     ).toMap());
     return doc.id;
+  }
+
+  // ---------------------------------------------------------------
+  // Own-video management (fix round)
+  // ---------------------------------------------------------------
+
+  /// Edits the caption (and its derived hashtags) of one of MY
+  /// videos. Ownership is verified against the signed-in uid.
+  Future<void> updateVideoCaption(String videoId, String caption) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    final ref = _videos.doc(videoId);
+    final doc = await ref.get();
+    if (!doc.exists) throw Exception('Video not found.');
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    if ((data['uid'] ?? '') != uid) {
+      throw Exception('You can only edit your own videos.');
+    }
+    final trimmed = caption.trim();
+    await ref.update({
+      'caption': trimmed,
+      'hashtags': VibeVideo.parseHashtags(trimmed),
+    });
+  }
+
+  /// Pins / unpins one of MY videos on my profile grid.
+  Future<void> setVideoPinned(String videoId, bool pinned) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    final ref = _videos.doc(videoId);
+    final doc = await ref.get();
+    if (!doc.exists) throw Exception('Video not found.');
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    if ((data['uid'] ?? '') != uid) {
+      throw Exception('You can only pin your own videos.');
+    }
+    await ref.update({
+      'pinned': pinned,
+      'pinnedAt': pinned ? FieldValue.serverTimestamp() : null,
+    });
+  }
+
+  /// Deletes one of MY videos: its comments go first (bounded
+  /// batch), then the video doc itself, which removes it from
+  /// every feed and profile. The Cloudinary media file is NOT
+  /// deleted — uploads use an unsigned preset, which cannot
+  /// delete assets; the orphaned file is unreachable once the
+  /// doc is gone.
+  Future<void> deleteOwnVideo(String videoId) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    final ref = _videos.doc(videoId);
+    final doc = await ref.get();
+    if (!doc.exists) throw Exception('Video not found.');
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    if ((data['uid'] ?? '') != uid) {
+      throw Exception('You can only delete your own videos.');
+    }
+    try {
+      final comments = await ref.collection('comments').limit(200).get();
+      if (comments.docs.isNotEmpty) {
+        final batch = _dbSafe.batch();
+        for (final c in comments.docs) {
+          batch.delete(c.reference);
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      // Comment cleanup is best-effort; deleting the video doc
+      // itself is what removes it from every feed.
+      debugPrint('deleteOwnVideo comments cleanup failed: $e');
+    }
+    await ref.delete();
   }
 
   // ---------------------------------------------------------------

@@ -29,6 +29,10 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
+  /// Lets the bottom nav re-tap on Home reach the feed
+  /// (fix round, item 7: TikTok-style tap-Home-to-refresh).
+  final _homeKey = GlobalKey<HomeScreenState>();
+
   @override
   Widget build(BuildContext context) {
     final uid = AuthService.instance.uid;
@@ -55,7 +59,7 @@ class _MainShellState extends State<MainShell> {
             child: IndexedStack(
               index: _index,
               children: [
-                const HomeScreen(),
+                HomeScreen(key: _homeKey),
                 const DiscoverScreen(),
                 UploadScreen(onPosted: () => setState(() => _index = 0)),
                 InboxScreen(active: _index == 3),
@@ -67,7 +71,16 @@ class _MainShellState extends State<MainShell> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
+        onTap: (i) {
+          // Item 7: re-tapping Home while already on Home
+          // refreshes the For You feed (scroll to first video +
+          // reload) instead of doing nothing.
+          if (i == 0 && _index == 0) {
+            _homeKey.currentState?.refreshFeed();
+            return;
+          }
+          setState(() => _index = i);
+        },
         items: [
           const BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),

@@ -1,23 +1,32 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:video_player/video_player.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/screens/create/edit_video_screen.dart';
+import 'package:vibeshort/services/sounds_service.dart';
 import 'package:vibeshort/services/video_edit_service.dart';
+import 'package:vibeshort/widgets/sounds_sheet.dart';
 
-/// In-app camera recorder (Editing phase): FULL-SCREEN live preview
-/// (cover fit, portrait), front/back flip, elapsed timer, 60-second
-/// max with auto-stop — and LIVE filters + effects over the preview.
+/// In-app camera recorder (Editing phase + fix round): FULL-SCREEN
+/// live preview (cover fit, portrait) with a TikTok-style layout:
 ///
-/// Colour filters and grade effects preview in real time through a
-/// [ColorFilter] matrix wrapped around the camera preview; Cinematic
-/// also gets its letterbox bars and Frame its white border as overlay
-/// widgets, so what you record over is the look that gets baked in.
-/// Structural effects (Mirror, Glitch…) cannot be rendered live on a
-/// camera feed — selecting one says so honestly on screen, and it is
-/// applied for real by FFmpeg at post time. The chosen filter/effect
-/// is carried into the edit screen pre-selected, and the raw
-/// recording is baked with that exact chain before upload.
+///  * Bottom LIVE LOOKS carousel (item 1): 30 rich looks — colour
+///    filters plus the grade effects that carry a preview matrix —
+///    each a circular thumbnail tinted by its own matrix; tapping
+///    one changes the live preview immediately, and the exact same
+///    FFmpeg chain is baked in at post time.
+///  * A second strip keeps the structural effects (Mirror, Glitch…)
+///    which cannot render on a live camera feed — the honest
+///    "applied when you post" note stays, and FFmpeg bakes them.
+///  * Right-side vertical tools column: Flip, Flash (torch), Timer
+///    (3s / 10s countdown), Effects shortcut. Front/back switching
+///    ALSO works by double-tapping the preview.
+///  * Duration chips: 15s / 60s, auto-stop at the limit.
+///  * "Add sound" pill (item 6): pick a built-in royalty-free
+///    track BEFORE recording; it plays while you record and is
+///    mixed into the posted video automatically.
 class CameraRecordScreen extends StatefulWidget {
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
@@ -28,12 +37,10 @@ class CameraRecordScreen extends StatefulWidget {
   State<CameraRecordScreen> createState() => _CameraRecordScreenState();
 }
 
-enum _Strip { filters, effects }
+enum _Strip { looks, effects }
 
 class _CameraRecordScreenState extends State<CameraRecordScreen>
     with WidgetsBindingObserver {
-  static const _maxSeconds = 60;
-
   List<CameraDescription> _cameras = [];
   CameraController? _controller;
   int _cameraIndex = 0;
@@ -43,12 +50,31 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   Timer? _timer;
   String? _error;
 
-  /// Live look selected on the record screen (Normal / None by
-  /// default). Filter and effect are mutually exclusive — the baked
-  /// chain uses one or the other, exactly like the edit screen.
+  /// Chosen recording length (item 1): 15s or 60s, TikTok-style.
+  int _durationLimit = 60;
+
+  /// Self-timer: 0 = off, otherwise 3 or 10 seconds. While the
+  /// countdown runs, [_countdown] holds the number on screen.
+  int _timerDelay = 0;
+  int? _countdown;
+  Timer? _countTimer;
+
+  bool _flashOn = false;
+
+  /// Live look selected from the carousel. [_filter] / [_effect]
+  /// stay in sync with it (they are what the edit screen receives);
+  /// selecting a structural effect resets the look to Normal.
+  LiveLook _look = LiveLooks.all.first;
   VideoFilter _filter = VideoFilters.all.first;
   VideoEffect _effect = VideoEffects.none;
-  _Strip _strip = _Strip.filters;
+  _Strip _strip = _Strip.looks;
+
+  /// Built-in sound picked before recording (item 6). The player
+  /// performs the track during recording; the edit screen mixes
+  /// the same cached file into the posted video.
+  VibeSound? _sound;
+  File? _soundFile;
+  VideoPlayerController? _soundPlayer;
 
   @override
   void initState() {
@@ -61,7 +87,9 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _countTimer?.cancel();
     _controller?.dispose();
+    _soundPlayer?.dispose();
     super.dispose();
   }
 
@@ -122,6 +150,9 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       setState(() {
         _controller = c;
         _initializing = false;
+        // A fresh controller starts with the torch off; the front
+        // camera has no torch at all.
+        _flashOn = false;
       });
     } on CameraException catch (e) {
       debugPrint('camera init failed: ${e.code}');
@@ -136,6 +167,10 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     }
   }
 
+  bool get _isBackCamera =>
+      _cameras.isNotEmpty &&
+      _cameras[_cameraIndex].lensDirection == CameraLensDirection.back;
+
   Future<void> _flip() async {
     if (_recording || _cameras.length < 2) return;
     _cameraIndex = (_cameraIndex + 1) % _cameras.length;
@@ -143,35 +178,155 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     await _initCamera(_cameraIndex);
   }
 
-  void _selectFilter(VideoFilter f) {
+  Future<void> _toggleFlash() async {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    if (!_isBackCamera) {
+      _showError('Flash is only available on the back camera.');
+      return;
+    }
+    try {
+      final next = !_flashOn;
+      await c.setFlashMode(next ? FlashMode.torch : FlashMode.off);
+      if (mounted) setState(() => _flashOn = next);
+    } catch (e) {
+      debugPrint('flash toggle failed: $e');
+      _showError('Flash is not available on this camera.');
+    }
+  }
+
+  void _cycleTimer() {
+    if (_recording) return;
     setState(() {
-      _filter = f;
-      if (f.ffmpegFilter != null) _effect = VideoEffects.none;
+      _timerDelay = _timerDelay == 0 ? 3 : (_timerDelay == 3 ? 10 : 0);
+    });
+  }
+
+  void _selectLook(LiveLook look) {
+    setState(() {
+      _look = look;
+      _filter = look.filter ?? VideoFilters.all.first;
+      _effect = look.effect ?? VideoEffects.none;
     });
   }
 
   void _selectEffect(VideoEffect fx) {
     setState(() {
       _effect = fx;
-      if (fx.ffmpegGraph != null) _filter = VideoFilters.all.first;
+      if (fx.ffmpegGraph != null) {
+        _filter = VideoFilters.all.first;
+        _look = LiveLooks.all.first;
+      }
     });
   }
+
+  // ---------------------------------------------------------------
+  // Built-in sound (item 6)
+  // ---------------------------------------------------------------
+
+  Future<void> _pickSound() async {
+    if (_recording) return;
+    final choice =
+        await showSoundsSheet(context, selectedId: _sound?.id);
+    if (choice == null || !mounted) return;
+    if (choice.cleared) {
+      await _soundPlayer?.dispose();
+      setState(() {
+        _sound = null;
+        _soundFile = null;
+        _soundPlayer = null;
+      });
+      return;
+    }
+    final pick = choice.pick!;
+    final player = VideoPlayerController.file(pick.file);
+    try {
+      await player.initialize();
+      await player.setLooping(true);
+    } catch (e) {
+      debugPrint('sound player init failed: $e');
+      _showError('That sound could not be played. Please try another.');
+      await player.dispose();
+      return;
+    }
+    await _soundPlayer?.dispose();
+    if (!mounted) {
+      player.dispose();
+      return;
+    }
+    setState(() {
+      _sound = pick.sound;
+      _soundFile = pick.file;
+      _soundPlayer = player;
+    });
+  }
+
+  Future<void> _clearSound() async {
+    await _soundPlayer?.dispose();
+    if (!mounted) return;
+    setState(() {
+      _sound = null;
+      _soundFile = null;
+      _soundPlayer = null;
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Recording
+  // ---------------------------------------------------------------
 
   Future<void> _toggleRecord() async {
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
+    if (_countdown != null) {
+      // A tap during the countdown cancels it.
+      _countTimer?.cancel();
+      setState(() => _countdown = null);
+      return;
+    }
     if (_recording) {
       await _stop();
       return;
     }
+    if (_timerDelay > 0) {
+      setState(() => _countdown = _timerDelay);
+      _countTimer?.cancel();
+      _countTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) {
+          t.cancel();
+          return;
+        }
+        final left = (_countdown ?? 1) - 1;
+        if (left <= 0) {
+          t.cancel();
+          setState(() => _countdown = null);
+          _startRecording();
+        } else {
+          setState(() => _countdown = left);
+        }
+      });
+      return;
+    }
+    await _startRecording();
+  }
+
+  Future<void> _startRecording() async {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized || _recording) return;
     try {
       await c.startVideoRecording();
+      // The picked sound performs along with the recording.
+      final sp = _soundPlayer;
+      if (sp != null) {
+        await sp.seekTo(Duration.zero);
+        await sp.play();
+      }
       _timer?.cancel();
       _elapsed = 0;
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted) return;
         setState(() => _elapsed++);
-        if (_elapsed >= _maxSeconds) _stop();
+        if (_elapsed >= _durationLimit) _stop();
       });
       setState(() => _recording = true);
     } on CameraException catch (e) {
@@ -185,6 +340,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     if (c == null || !_recording) return;
     _timer?.cancel();
     setState(() => _recording = false);
+    await _soundPlayer?.pause();
     try {
       final file = await c.stopVideoRecording();
       if (!mounted) return;
@@ -194,6 +350,9 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
             videoPath: file.path,
             initialFilterName: _filter.name,
             initialEffectName: _effect.name,
+            initialSoundId: _sound?.id,
+            initialSoundName: _sound?.name,
+            initialSoundPath: _soundFile?.path,
             onPosted: widget.onPosted,
           ),
         ),
@@ -213,7 +372,8 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   String get _timeLabel {
     final m = (_elapsed ~/ 60).toString();
     final s = (_elapsed % 60).toString().padLeft(2, '0');
-    return '$m:$s / 1:00';
+    final total = _durationLimit == 60 ? '1:00' : '0:15';
+    return '$m:$s / $total';
   }
 
   /// True when the selected effect has neither a live matrix nor an
@@ -249,7 +409,12 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                 if (_initializing || c == null)
                   const Center(child: CircularProgressIndicator())
                 else
-                  _livePreview(c),
+                  // Double-tap switches front/back camera (item 1).
+                  GestureDetector(
+                    onDoubleTap: _flip,
+                    child: _livePreview(c),
+                  ),
+                // Elapsed / limit chip
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 64,
                   left: 0,
@@ -280,6 +445,35 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                     ),
                   ),
                 ),
+                // Add-sound pill (item 6)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 108,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: _soundPill()),
+                ),
+                // Right-side tools column (item 1)
+                Positioned(
+                  right: 8,
+                  top: MediaQuery.of(context).padding.top + 170,
+                  child: _toolsColumn(),
+                ),
+                // Self-timer countdown
+                if (_countdown != null)
+                  Center(
+                    child: Text(
+                      '$_countdown',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 110,
+                        fontWeight: FontWeight.w900,
+                        shadows: [
+                          Shadow(color: Colors.black87, blurRadius: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                // Bottom controls
                 Positioned(
                   left: 0,
                   right: 0,
@@ -304,11 +498,11 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                             ),
                           ),
                         ),
+                      _durationChips(),
+                      const SizedBox(height: 10),
                       _stripToggle(),
                       const SizedBox(height: 10),
-                      _strip == _Strip.filters
-                          ? _filtersRow()
-                          : _effectsRow(),
+                      _strip == _Strip.looks ? _looksRow() : _effectsRow(),
                       const SizedBox(height: 12),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -343,13 +537,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                               ),
                             ),
                           ),
-                          IconButton(
-                            onPressed: _flip,
-                            iconSize: 34,
-                            icon: const Icon(
-                                Icons.flip_camera_ios_outlined,
-                                color: Colors.white),
-                          ),
+                          const SizedBox(width: 56),
                         ],
                       ),
                     ],
@@ -357,6 +545,162 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                 ),
               ],
             ),
+    );
+  }
+
+  /// The Add-sound pill: shows the picked track (with a clear
+  /// button) or invites a pick. Hidden while recording.
+  Widget _soundPill() {
+    if (_recording) return const SizedBox.shrink();
+    final sound = _sound;
+    return Container(
+      padding: EdgeInsets.only(
+          left: 12, right: sound == null ? 14 : 4, top: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: _pickSound,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.music_note,
+                    color: Colors.white, size: 17),
+                const SizedBox(width: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 190),
+                  child: Text(
+                    sound == null ? 'Add sound' : sound.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (sound != null)
+            IconButton(
+              onPressed: _clearSound,
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.close, color: Colors.white70, size: 17),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Right-side vertical tools column (item 1): Flip, Flash,
+  /// Timer, Effects — the TikTok camera layout.
+  Widget _toolsColumn() {
+    Widget tool(IconData icon, String label, VoidCallback onTap,
+        {bool active = false, bool dimmed = false}) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black38,
+              ),
+              child: Icon(
+                icon,
+                color: dimmed
+                    ? Colors.white38
+                    : (active ? AppTheme.accent : Colors.white),
+                size: 23,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: dimmed ? Colors.white38 : Colors.white,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                shadows: const [
+                  Shadow(color: Colors.black87, blurRadius: 4),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        tool(Icons.flip_camera_ios_outlined, 'Flip', _flip),
+        const SizedBox(height: 16),
+        tool(
+          _flashOn ? Icons.flash_on : Icons.flash_off,
+          'Flash',
+          _toggleFlash,
+          active: _flashOn,
+          dimmed: !_isBackCamera,
+        ),
+        const SizedBox(height: 16),
+        tool(
+          Icons.timer_outlined,
+          _timerDelay == 0 ? 'Timer' : '${_timerDelay}s',
+          _cycleTimer,
+          active: _timerDelay != 0,
+        ),
+        const SizedBox(height: 16),
+        tool(Icons.auto_fix_high, 'Effects', () {
+          if (_recording) return;
+          setState(() => _strip = _Strip.effects);
+        }, active: _strip == _Strip.effects),
+      ],
+    );
+  }
+
+  /// 15s / 60s duration chips (item 1).
+  Widget _durationChips() {
+    Widget chip(int seconds) {
+      final selected = _durationLimit == seconds;
+      return GestureDetector(
+        onTap: _recording
+            ? null
+            : () => setState(() => _durationLimit = seconds),
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.black45,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            '${seconds}s',
+            style: TextStyle(
+              color: selected ? Colors.black : Colors.white70,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        chip(15),
+        const SizedBox(width: 8),
+        chip(60),
+      ],
     );
   }
 
@@ -448,57 +792,60 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        tab('Filters', _Strip.filters),
+        tab('Looks', _Strip.looks),
         const SizedBox(width: 8),
         tab('Effects', _Strip.effects),
       ],
     );
   }
 
-  /// Filter strip: the same 20 colour filters as the edit screen.
-  /// Each chip is a circular swatch (a cyan→violet→amber gradient
-  /// tinted by the filter's own matrix) with the name under it;
-  /// tapping one tints the live preview immediately.
-  Widget _filtersRow() {
+  /// LIVE looks carousel (item 1): circular thumbnails over a small
+  /// multi-colour "scene" gradient, each tinted by the look's own
+  /// matrix so the thumbnail itself previews the grade; grade
+  /// effects carry their emoji badge, Cinematic gets mini
+  /// letterbox bars. Tapping applies the look to the live preview.
+  Widget _looksRow() {
     return SizedBox(
-      height: 76,
+      height: 78,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: VideoFilters.all.length,
+        itemCount: LiveLooks.all.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (_, i) {
-          final f = VideoFilters.all[i];
-          final selected = f.name == _filter.name;
+          final look = LiveLooks.all[i];
+          final selected = look.name == _look.name;
           Widget swatch = Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Color(0xFF00C2FF),
-                  Color(0xFF7C4DFF),
-                  Color(0xFFFFB340),
+                  Color(0xFF7ED6FF), // sky
+                  Color(0xFF00C2FF), // cyan
+                  Color(0xFFFFB340), // sun
+                  Color(0xFFFF7A59), // warm ground
                 ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                stops: [0.0, 0.45, 0.72, 1.0],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
               ),
             ),
           );
-          if (f.previewMatrix != null) {
+          if (look.previewMatrix != null) {
             swatch = ColorFiltered(
-              colorFilter: ColorFilter.matrix(f.previewMatrix!),
+              colorFilter: ColorFilter.matrix(look.previewMatrix!),
               child: swatch,
             );
           }
           return GestureDetector(
-            onTap: _recording ? null : () => _selectFilter(f),
+            onTap: _recording ? null : () => _selectLook(look),
             child: SizedBox(
-              width: 54,
+              width: 56,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 50,
+                    height: 50,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -508,11 +855,41 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                         width: selected ? 2.5 : 1,
                       ),
                     ),
-                    child: ClipOval(child: swatch),
+                    child: ClipOval(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          swatch,
+                          if (look.letterbox) ...[
+                            const Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              height: 6,
+                              child: ColoredBox(color: Colors.black),
+                            ),
+                            const Positioned(
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              height: 6,
+                              child: ColoredBox(color: Colors.black),
+                            ),
+                          ],
+                          if (look.effect != null)
+                            Positioned(
+                              right: 1,
+                              bottom: 1,
+                              child: Text(look.emoji,
+                                  style: const TextStyle(fontSize: 12)),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    f.name,
+                    look.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -541,7 +918,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   /// structural ones show the honest note above the strip.
   Widget _effectsRow() {
     return SizedBox(
-      height: 76,
+      height: 78,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),

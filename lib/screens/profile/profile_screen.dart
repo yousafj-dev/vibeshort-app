@@ -8,6 +8,7 @@ import 'package:vibeshort/screens/admin/admin_panel_screen.dart';
 import 'package:vibeshort/screens/profile/edit_profile_screen.dart';
 import 'package:vibeshort/screens/profile/settings_screen.dart';
 import 'package:vibeshort/screens/wallet/wallet_screen.dart';
+import 'package:vibeshort/widgets/own_video_sheet.dart';
 
 /// Own profile: header (photo, name, @username, bio), stats
 /// (Videos / Following / Followers / Likes), Edit Profile button
@@ -259,6 +260,9 @@ class ProfileScreen extends StatelessWidget {
               VideoViewerScreen(videos: videos, initialPage: i),
         ),
       ),
+      // Fix round, item 2: long-press a tile for the own-video
+      // actions (Download / Pin / Edit captions / Share / Delete).
+      onLongPress: () => showOwnVideoActions(context, v),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -267,6 +271,20 @@ class ProfileScreen extends StatelessWidget {
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => _thumbFallback())
               : _thumbFallback(),
+          if (v.pinned)
+            Positioned(
+              left: 5,
+              top: 5,
+              child: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black54,
+                ),
+                child: const Icon(Icons.push_pin,
+                    size: 12, color: AppTheme.accent),
+              ),
+            ),
           const Positioned(
             left: 6,
             bottom: 6,

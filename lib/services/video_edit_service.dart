@@ -531,7 +531,112 @@ class VideoFilters {
         VideoFilter('Crisp',
             'unsharp=5:5:1.2:5:5:0.0,eq=contrast=1.08:saturation=1.05',
             _crispPreview),
+        // Fix round: richer looks for the camera carousel — soft
+        // pink beauty tint, bright airy bloom, dark teal moody.
+        VideoFilter('Pink Glow',
+            'eq=saturation=1.18:brightness=0.05,'
+            'colorbalance=rs=0.16:bs=0.12:rm=0.1:bm=0.08',
+            _pinkGlowPreview),
+        VideoFilter('Bloom',
+            'eq=brightness=0.09:contrast=0.92:saturation=1.12,'
+            'colorbalance=rs=0.06:gs=0.02:bs=-0.06',
+            _bloomPreview),
+        VideoFilter('Moody',
+            'eq=saturation=0.62:contrast=1.14:brightness=-0.03,'
+            'colorbalance=rs=-0.06:gs=0.06:bs=0.1',
+            _moodyPreview),
       ];
+
+  static const List<double> _pinkGlowPreview = [
+    1.08, 0.02, 0.03, 0, 18,
+    0.01, 0.96, 0.02, 0, 8,
+    0.03, 0.02, 1.06, 0, 16,
+    0, 0, 0, 1, 0,
+  ];
+
+  static const List<double> _bloomPreview = [
+    0.95, 0.01, 0, 0, 26,
+    0, 0.95, 0.01, 0, 24,
+    0, 0, 0.93, 0, 20,
+    0, 0, 0, 1, 0,
+  ];
+
+  static const List<double> _moodyPreview = [
+    0.55, 0.30, 0.05, 0, -6,
+    0.18, 0.68, 0.14, 0, -4,
+    0.10, 0.30, 0.72, 0, 2,
+    0, 0, 0, 1, 0,
+  ];
+}
+
+/// One entry of the camera screen's TikTok-style LIVE carousel
+/// (fix round): a look that can be previewed on the camera feed
+/// itself. A look is either a colour [filter] or one of the
+/// grade-style [VideoEffect]s that carries a preview matrix — both
+/// bake through the exact same FFmpeg chains the edit screen uses,
+/// so what you see while recording is what gets posted.
+/// Structural effects (mirror, glitch…) are NOT looks: they stay
+/// in the camera's Effects tab and bake at post time, as before.
+class LiveLook {
+  final String name;
+  final VideoFilter? filter;
+  final VideoEffect? effect;
+
+  /// Draws the Cinematic letterbox bars over the live preview.
+  final bool letterbox;
+
+  const LiveLook(this.name, {this.filter, this.effect, this.letterbox = false});
+
+  List<double>? get previewMatrix =>
+      effect?.previewMatrix ?? filter?.previewMatrix;
+
+  /// Icon shown on the carousel thumbnail.
+  String get emoji => effect?.emoji ?? '🎨';
+}
+
+class LiveLooks {
+  LiveLooks._();
+
+  static VideoFilter _f(String name) =>
+      VideoFilters.all.firstWhere((f) => f.name == name);
+
+  static VideoEffect _e(String name) =>
+      VideoEffects.all.firstWhere((e) => e.name == name);
+
+  /// 30 live looks, TikTok order: beauty/popular first, moody and
+  /// mono looks last.
+  static final List<LiveLook> all = [
+    const LiveLook('Normal'),
+    LiveLook('Beauty', filter: _f('Beauty')),
+    LiveLook('Soft Glow', effect: _e('Soft Glow')),
+    LiveLook('Golden', filter: _f('Golden')),
+    LiveLook('Sunset', filter: _f('Sunset')),
+    LiveLook('Pink Glow', filter: _f('Pink Glow')),
+    LiveLook('Vivid', filter: _f('Vivid')),
+    LiveLook('Poster Pop', effect: _e('Poster Pop')),
+    LiveLook('Warm', filter: _f('Warm')),
+    LiveLook('Vintage', filter: _f('Vintage')),
+    LiveLook('Retro', filter: _f('Retro')),
+    LiveLook('Dreamy', filter: _f('Dreamy')),
+    LiveLook('Bloom', filter: _f('Bloom')),
+    LiveLook('Candy', filter: _f('Candy')),
+    LiveLook('Cool', filter: _f('Cool')),
+    LiveLook('Teal', filter: _f('Teal')),
+    LiveLook('Cyber', filter: _f('Cyber')),
+    LiveLook('Cinematic', effect: _e('Cinematic'), letterbox: true),
+    LiveLook('Noir', filter: _f('Noir')),
+    LiveLook('Drama', filter: _f('Drama')),
+    LiveLook('Old Film', effect: _e('Old Film')),
+    LiveLook('Fade', filter: _f('Fade')),
+    LiveLook('Sepia', filter: _f('Sepia')),
+    LiveLook('Moody', filter: _f('Moody')),
+    LiveLook('Midnight', filter: _f('Midnight')),
+    LiveLook('Fog', effect: _e('Fog')),
+    LiveLook('X-Ray', effect: _e('X-Ray')),
+    LiveLook('Underwater', effect: _e('Underwater')),
+    LiveLook('B&W', filter: _f('B&W')),
+    LiveLook('Crisp', filter: _f('Crisp')),
+  ];
 }
 
 /// Runs FFmpeg (via ffmpeg_kit_flutter_new) to bake the chosen filter

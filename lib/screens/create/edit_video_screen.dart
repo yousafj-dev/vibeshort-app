@@ -7,6 +7,7 @@ import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/services/storage_service.dart';
 import 'package:vibeshort/services/video_edit_service.dart';
+import 'package:vibeshort/widgets/sounds_sheet.dart';
 
 /// Edit + post screen (Editing phase). Every video — recorded in
 /// the in-app camera (with a filter/effect already chosen live) or
@@ -27,6 +28,14 @@ class EditVideoScreen extends StatefulWidget {
   final String? initialFilterName;
   final String? initialEffectName;
 
+  /// Built-in sound chosen on the record screen BEFORE recording
+  /// (fix round, item 6): it arrives as the already-downloaded
+  /// cache file and is mixed in as the video's music, with the
+  /// sound attribution stored on the video doc.
+  final String? initialSoundId;
+  final String? initialSoundName;
+  final String? initialSoundPath;
+
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
 
@@ -35,6 +44,9 @@ class EditVideoScreen extends StatefulWidget {
     required this.videoPath,
     this.initialFilterName,
     this.initialEffectName,
+    this.initialSoundId,
+    this.initialSoundName,
+    this.initialSoundPath,
     this.onPosted,
   });
 
@@ -52,6 +64,10 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   MusicMode _musicMode = MusicMode.original;
   String? _musicPath;
   String? _musicName;
+
+  /// Built-in sound id when the attached music is one of the
+  /// app's royalty-free sounds (item 6); null for device files.
+  String? _soundId;
   OverlayPosition _textPos = OverlayPosition.bottom;
 
   // Trim window in seconds (start 0, end = full duration = untrimmed).
@@ -79,6 +95,14 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         (fx) => fx.name == effectName,
         orElse: () => VideoEffects.none,
       );
+    }
+    // A built-in sound picked before recording rides in as the
+    // music track: replace mode with its cache file as the source.
+    if (widget.initialSoundPath != null) {
+      _musicMode = MusicMode.replace;
+      _musicPath = widget.initialSoundPath;
+      _musicName = widget.initialSoundName;
+      _soundId = widget.initialSoundId;
     }
     _initPlayer();
   }
@@ -173,6 +197,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         _musicPath = path;
         _musicName = path.split('/').last;
         _musicMode = MusicMode.replace;
+        // A device file replaces any built-in sound attribution.
+        _soundId = null;
       });
     } catch (e) {
       debugPrint('pickMusic failed: $e');
@@ -183,8 +209,38 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
     }
   }
 
+  /// Built-in sounds picker (item 6): attach one of the app's
+  /// royalty-free tracks to a gallery clip (or a recorded one).
+  /// The picked file is already downloaded/cached by the sheet.
+  Future<void> _pickBuiltInSound() async {
+    final choice = await showSoundsSheet(context, selectedId: _soundId);
+    if (choice == null || !mounted) return;
+    if (choice.cleared) {
+      setState(() {
+        _musicMode = MusicMode.original;
+        _musicPath = null;
+        _musicName = null;
+        _soundId = null;
+      });
+      _player?.setVolume(1);
+      return;
+    }
+    final pick = choice.pick!;
+    setState(() {
+      _musicMode = MusicMode.replace;
+      _musicPath = pick.file.path;
+      _musicName = pick.sound.name;
+      _soundId = pick.sound.id;
+    });
+    _player?.setVolume(1);
+  }
+
   void _setMusicMode(MusicMode mode) {
-    setState(() => _musicMode = mode);
+    setState(() {
+      _musicMode = mode;
+      // Leaving replace mode drops the sound attribution.
+      if (mode != MusicMode.replace) _soundId = null;
+    });
     // Preview mirrors it: mute silences the preview, anything else
     // restores the original audio.
     _player?.setVolume(mode == MusicMode.mute ? 0 : 1);
@@ -237,15 +293,21 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       );
       String? soundName;
       if (_musicMode == MusicMode.replace) {
-        // Posting with picked music: name the sound after the track.
-        soundName = (_musicName ?? 'Music')
-            .replaceAll(RegExp(r'\.[^.]+$'), '')
-            .replaceAll('_', ' ');
+        // Posting with picked music: name the sound after the
+        // track. A built-in sound keeps its exact catalogue name
+        // and stores its id for attribution (item 6); a device
+        // file is named after the file, as before.
+        soundName = _soundId != null
+            ? _musicName
+            : (_musicName ?? 'Music')
+                .replaceAll(RegExp(r'\.[^.]+$'), '')
+                .replaceAll('_', ' ');
       }
       await FirestoreService.instance.addVideo(
         videoUrl: url,
         caption: _caption.text,
         soundName: soundName,
+        soundId: _musicMode == MusicMode.replace ? _soundId : null,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -690,6 +752,22 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           backgroundColor: AppTheme.card,
           labelStyle: TextStyle(
               color: _musicMode == MusicMode.mute
+                  ? Colors.white
+                  : AppTheme.muted,
+              fontWeight: FontWeight.w600),
+          side: BorderSide.none,
+        ),
+        ActionChip(
+          avatar: const Icon(Icons.trending_up,
+              size: 18, color: Colors.white70),
+          label: const Text('Sounds'),
+          onPressed: _posting ? null : _pickBuiltInSound,
+          backgroundColor:
+              _musicMode == MusicMode.replace && _soundId != null
+                  ? AppTheme.accent
+                  : AppTheme.card,
+          labelStyle: TextStyle(
+              color: _musicMode == MusicMode.replace && _soundId != null
                   ? Colors.white
                   : AppTheme.muted,
               fontWeight: FontWeight.w600),

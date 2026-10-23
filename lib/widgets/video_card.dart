@@ -9,6 +9,7 @@ import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/discover/hashtag_videos_screen.dart';
 import 'package:vibeshort/screens/profile/public_profile_screen.dart';
 import 'package:vibeshort/widgets/comments_sheet.dart';
+import 'package:vibeshort/widgets/own_video_sheet.dart';
 import 'package:vibeshort/widgets/report_sheet.dart';
 
 /// Lighter Cloudinary delivery for playback: phones record big
@@ -38,6 +39,11 @@ class _VideoCardState extends State<VideoCard> {
   bool _failed = false;
   bool _showPlayIcon = false;
 
+  // Fix round, item 3 (feed long-press menu) state.
+  double _speed = 1.0;
+  bool _clearDisplay = false;
+  bool _captionsOn = true;
+
   // Optimistic like state, reconciled with the stream below.
   late bool _liked;
   late int _likes;
@@ -61,6 +67,7 @@ class _VideoCardState extends State<VideoCard> {
     try {
       await ctrl.initialize();
       await ctrl.setLooping(true);
+      await ctrl.setPlaybackSpeed(_speed);
       if (!mounted) {
         ctrl.dispose();
         return;
@@ -143,6 +150,153 @@ class _VideoCardState extends State<VideoCard> {
     return TextSpan(style: base, children: spans);
   }
 
+  /// Tap on the video: in Clear display mode a tap only brings
+  /// the UI back; otherwise it toggles play/pause as before.
+  void _handleTap() {
+    if (_clearDisplay) {
+      setState(() => _clearDisplay = false);
+      return;
+    }
+    _togglePlay();
+  }
+
+  /// Long-press menu (fix round, item 3): Download, Playback
+  /// speed, Clear display, Captions on/off, Share — plus the
+  /// own-video actions when this is my video.
+  void _openFeedMenu() {
+    final video = widget.video;
+    final isMine = video.uid == AuthService.instance.uid;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        Widget row(IconData icon, String label,
+            {String? subtitle, VoidCallback? onTap}) {
+          return ListTile(
+            leading: Icon(icon, color: Colors.white),
+            title: Text(label, style: const TextStyle(color: Colors.white)),
+            subtitle: subtitle == null
+                ? null
+                : Text(subtitle,
+                    style: const TextStyle(color: AppTheme.muted)),
+            onTap: onTap,
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              row(Icons.download, 'Download video',
+                  subtitle: 'Save to your gallery', onTap: () {
+                Navigator.of(sheetCtx).pop();
+                downloadVideoAction(context, video);
+              }),
+              row(Icons.speed, 'Playback speed',
+                  subtitle: '${_speed}x', onTap: () {
+                Navigator.of(sheetCtx).pop();
+                _openSpeedMenu();
+              }),
+              row(Icons.visibility_off_outlined, 'Clear display',
+                  subtitle: 'Hide all buttons and text', onTap: () {
+                Navigator.of(sheetCtx).pop();
+                setState(() => _clearDisplay = true);
+              }),
+              row(
+                _captionsOn
+                    ? Icons.closed_caption
+                    : Icons.closed_caption_off_outlined,
+                _captionsOn ? 'Captions: On' : 'Captions: Off',
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  setState(() => _captionsOn = !_captionsOn);
+                },
+              ),
+              row(Icons.share_outlined, 'Share', onTap: () {
+                Navigator.of(sheetCtx).pop();
+                _share();
+              }),
+              if (isMine) ...[
+                const Divider(color: Colors.white10, height: 1),
+                row(
+                  video.pinned
+                      ? Icons.push_pin
+                      : Icons.push_pin_outlined,
+                  video.pinned ? 'Unpin video' : 'Pin video',
+                  onTap: () {
+                    Navigator.of(sheetCtx).pop();
+                    pinVideoAction(context, video);
+                  },
+                ),
+                row(Icons.edit_outlined, 'Edit captions', onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  editCaptionAction(context, video);
+                }),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline,
+                      color: Color(0xFFFF5C7A)),
+                  title: const Text('Delete video',
+                      style: TextStyle(color: Color(0xFFFF5C7A))),
+                  onTap: () {
+                    Navigator.of(sheetCtx).pop();
+                    deleteVideoAction(context, video);
+                  },
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Playback-speed chooser for the long-press menu.
+  void _openSpeedMenu() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Playback speed',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800)),
+                ),
+              ),
+              for (final s in const [0.5, 1.0, 1.5, 2.0])
+                ListTile(
+                  title: Text('${s}x',
+                      style: const TextStyle(color: Colors.white)),
+                  trailing: _speed == s
+                      ? const Icon(Icons.check, color: AppTheme.accent)
+                      : null,
+                  onTap: () async {
+                    Navigator.of(sheetCtx).pop();
+                    setState(() => _speed = s);
+                    await _ctrl?.setPlaybackSpeed(s);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   void _togglePlay() {
     final ctrl = _ctrl;
     if (ctrl == null || !_ready) return;
@@ -208,6 +362,13 @@ class _VideoCardState extends State<VideoCard> {
   void _openMoreMenu() {
     final video = widget.video;
     final isMine = video.uid == AuthService.instance.uid;
+    // Fix round, item 2: my own videos get the own-video action
+    // sheet (Download / Pin / Edit captions / Share / Delete)
+    // instead of the report/block menu.
+    if (isMine) {
+      showOwnVideoActions(context, video);
+      return;
+    }
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.card,
@@ -273,7 +434,8 @@ class _VideoCardState extends State<VideoCard> {
         children: [
           // Player (cover-fit) or states
           GestureDetector(
-            onTap: _togglePlay,
+            onTap: _handleTap,
+            onLongPress: _openFeedMenu,
             child: _failed
                 ? const Center(
                     child: Column(
@@ -301,12 +463,13 @@ class _VideoCardState extends State<VideoCard> {
                             color: AppTheme.accent),
                       ),
           ),
-          if (_showPlayIcon && _ready)
+          if (_showPlayIcon && _ready && !_clearDisplay)
             const Center(
               child: Icon(Icons.play_arrow,
                   size: 84, color: Colors.white70),
             ),
           // Bottom gradient for caption readability
+          if (!_clearDisplay)
           const Positioned(
             left: 0,
             right: 0,
@@ -323,6 +486,7 @@ class _VideoCardState extends State<VideoCard> {
             ),
           ),
           // Caption block (bottom-left, clear of the rail)
+          if (!_clearDisplay)
           Positioned(
             left: 14,
             right: 92,
@@ -343,7 +507,7 @@ class _VideoCardState extends State<VideoCard> {
                     ),
                   ),
                 ),
-                if (video.caption.isNotEmpty) ...[
+                if (_captionsOn && video.caption.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   RichText(
                     text: _captionSpan(video.caption),
@@ -372,6 +536,7 @@ class _VideoCardState extends State<VideoCard> {
             ),
           ),
           // Right rail
+          if (!_clearDisplay)
           Positioned(
             right: 10,
             bottom: 90,

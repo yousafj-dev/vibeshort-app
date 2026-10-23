@@ -5,6 +5,7 @@ import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/admin/admin_panel_screen.dart';
 import 'package:vibeshort/screens/auth/auth_screen.dart';
+import 'package:vibeshort/screens/wallet/wallet_screen.dart';
 
 /// Simple settings: account info + the app's only Log out.
 /// Phase 4: admins also get the Admin panel entry here — it is
@@ -82,6 +83,32 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 28),
+          const Text('Money',
+              style: TextStyle(
+                  color: AppTheme.muted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: AppTheme.card,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: ListTile(
+              leading: const Icon(Icons.account_balance_wallet_outlined,
+                  color: Colors.white),
+              title: const Text('Wallet',
+                  style: TextStyle(color: Colors.white)),
+              subtitle: const Text('Balance, withdrawals and referrals',
+                  style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
+              trailing:
+                  const Icon(Icons.chevron_right, color: AppTheme.muted),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const WalletScreen()),
+              ),
+            ),
+          ),
+          const SizedBox(height: 28),
           // Phase 4: Admin panel entry — admins only.
           StreamBuilder<bool>(
             stream: FirestoreService.instance.myIsAdmin(),
@@ -137,7 +164,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           const Center(
-            child: Text('VibeShort v1.0.0 — Phase 4',
+            child: Text('VibeShort v1.0.0',
                 style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
           ),
         ],
