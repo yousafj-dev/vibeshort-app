@@ -18,6 +18,7 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   final _nameCtrl = TextEditingController();
   final _usernameCtrl = TextEditingController();
+  final _referralCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _isSignup = false;
@@ -43,6 +44,7 @@ class _AuthScreenState extends State<AuthScreen> {
   void dispose() {
     _nameCtrl.dispose();
     _usernameCtrl.dispose();
+    _referralCtrl.dispose();
     _emailCtrl.dispose();
     _passCtrl.dispose();
     super.dispose();
@@ -94,6 +96,16 @@ class _AuthScreenState extends State<AuthScreen> {
           username: username,
           email: email,
         );
+        // Optional referral code (Phase 3 groundwork): records
+        // who invited this user. Best-effort — an unknown code
+        // records nothing and never blocks the signup.
+        final refCode = _referralCtrl.text.trim();
+        if (refCode.isNotEmpty) {
+          await FirestoreService.instance.recordReferral(
+            newUid: uid,
+            rawCode: refCode,
+          );
+        }
       } else {
         await auth.signIn(email, pass);
       }
@@ -222,6 +234,15 @@ class _AuthScreenState extends State<AuthScreen> {
                   decoration: const InputDecoration(
                     hintText: 'Username (unique)',
                     prefixIcon: Icon(Icons.alternate_email),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _referralCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    hintText: 'Referral code (optional)',
+                    prefixIcon: Icon(Icons.group_add_outlined),
                   ),
                 ),
                 const SizedBox(height: 12),

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:vibeshort/models/vibe_notification.dart';
 import 'package:vibeshort/models/vibe_user.dart';
 import 'package:vibeshort/models/vibe_video.dart';
+import 'package:vibeshort/models/vibe_wallet.dart';
 import 'package:vibeshort/models/vibe_comment.dart';
 import 'package:vibeshort/services/auth_service.dart';
 
@@ -492,6 +493,289 @@ class FirestoreService {
       await batch.commit();
     } catch (e) {
       debugPrint('markAllNotificationsRead failed: $e');
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Wallet, ledger & referrals (Phase 3)
+  // Data: vibeshort_wallets/{uid}, vibeshort_transactions/{id},
+  //       vibeshort_withdrawal_requests/{id}, vibeshort_referrals/{id}
+  //
+  // Blueprint Sections 4 + 8: the LEDGER is the source of truth.
+  // Balances shown in the app are always derived by summing
+  // `vibeshort_transactions`; the wallet doc only caches the same
+  // numbers and is refreshed inside the same batched write that
+  // adds a ledger entry — a balance is never edited on its own.
+  //
+  // All list queries filter on ONE field and sort client-side: a
+  // where + orderBy pair would need a composite index that does
+  // not exist in this project (same lesson as the Following feed).
+  // ---------------------------------------------------------------
+
+  CollectionReference get _wallets => _dbSafe.collection('vibeshort_wallets');
+
+  CollectionReference get _transactions =>
+      _dbSafe.collection('vibeshort_transactions');
+
+  CollectionReference get _withdrawalRequests =>
+      _dbSafe.collection('vibeshort_withdrawal_requests');
+
+  CollectionReference get _referrals =>
+      _dbSafe.collection('vibeshort_referrals');
+
+  /// The referral code for [uid]: stored on the profile doc so it
+  /// can be looked up at signup. Deterministic from the username +
+  /// a uid fragment — stable across calls, unique per account.
+  String referralCodeFor(String uid, String username) {
+    final base = username.trim().isEmpty
+        ? 'USER'
+        : username.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    final suffix =
+        (uid.length >= 6 ? uid.substring(0, 6) : uid).toUpperCase();
+    return 'VIBE-$base-$suffix';
+  }
+
+  /// Creates `vibeshort_wallets/{uid}` with zero balances when it
+  /// does not exist yet, and makes sure the profile doc carries a
+  /// referral code. Safe to call every time the Wallet opens —
+  /// existing data is never overwritten.
+  Future<void> ensureWalletAndReferralCode() async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return;
+    try {
+      final wref = _wallets.doc(uid);
+      final w = await wref.get();
+      if (!w.exists) {
+        await wref.set({
+          'user_id': uid,
+          'currency': WalletRules.currency,
+          'cached_pending': 0,
+          'cached_available': 0,
+          'cached_paid': 0,
+          'created_at': FieldValue.serverTimestamp(),
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+      }
+      final uref = _users.doc(uid);
+      final u = await uref.get();
+      final data = u.data() as Map<String, dynamic>? ?? {};
+      final existing = (data['referralCode'] ?? '') as String;
+      if (existing.isEmpty) {
+        final username = (data['username'] ?? '') as String;
+        await uref.set(
+          {'referralCode': referralCodeFor(uid, username)},
+          SetOptions(merge: true),
+        );
+      }
+    } catch (e) {
+      debugPrint('ensureWalletAndReferralCode failed: $e');
+    }
+  }
+
+  /// My referral code, live (empty until the profile doc has one).
+  Stream<String> myReferralCode() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value('');
+    try {
+      return _users.doc(uid).snapshots().map((doc) {
+        final d = doc.data() as Map<String, dynamic>? ?? {};
+        return (d['referralCode'] ?? '') as String;
+      });
+    } catch (e) {
+      debugPrint('myReferralCode failed: $e');
+      return Stream.value('');
+    }
+  }
+
+  /// My full ledger, newest first (bounded). Balances are derived
+  /// from this list via [WalletBalances.fromTransactions].
+  Stream<List<VibeTransaction>> myTransactions() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(const []);
+    try {
+      return _transactions
+          .where('user_id', isEqualTo: uid)
+          .snapshots()
+          .map((s) {
+        final list = s.docs.map(VibeTransaction.fromDoc).toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list.take(100).toList();
+      });
+    } catch (e) {
+      debugPrint('myTransactions failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// My withdrawal requests, newest first.
+  Stream<List<VibeWithdrawal>> myWithdrawals() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(const []);
+    try {
+      return _withdrawalRequests
+          .where('user_id', isEqualTo: uid)
+          .snapshots()
+          .map((s) {
+        final list = s.docs.map(VibeWithdrawal.fromDoc).toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list.take(50).toList();
+      });
+    } catch (e) {
+      debugPrint('myWithdrawals failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// People who signed up with MY referral code.
+  Stream<List<VibeReferral>> myReferrals() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(const []);
+    try {
+      return _referrals
+          .where('referrer_id', isEqualTo: uid)
+          .snapshots()
+          .map((s) {
+        final list = s.docs.map(VibeReferral.fromDoc).toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        return list.take(100).toList();
+      });
+    } catch (e) {
+      debugPrint('myReferrals failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// Submits a withdrawal request (blueprint Section 3 journey):
+  /// the user checks their AVAILABLE balance against the minimum
+  /// payout rule, then submits amount + payout method + account
+  /// number. Writes, in ONE batch:
+  ///   1. the request doc (status: pending review — approvals are
+  ///      the later Admin phase, never faked here),
+  ///   2. the matching ledger entry (type withdrawal, negative
+  ///      amount, status pending = funds on hold),
+  ///   3. the wallet doc's refreshed cached balances.
+  /// The [idempotencyKey] makes a double-tap or a retried submit
+  /// return the existing request instead of creating a duplicate
+  /// (blueprint Section 4).
+  Future<void> submitWithdrawal({
+    required double amount,
+    required String payoutMethod,
+    required String payoutAccount,
+    required String idempotencyKey,
+  }) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) throw Exception('Please log in first.');
+    if (amount < WalletRules.minWithdrawalPkr) {
+      throw Exception(
+          'Minimum withdrawal is ${formatPkr(WalletRules.minWithdrawalPkr.toDouble())}.');
+    }
+    final account = payoutAccount.replaceAll(RegExp(r'[^0-9]'), '');
+    if (account.length < 10 || account.length > 15) {
+      throw Exception('Please enter a valid account number.');
+    }
+    // Idempotency: same key already submitted -> nothing to do.
+    final dup = await _withdrawalRequests
+        .where('idempotency_key', isEqualTo: idempotencyKey)
+        .limit(1)
+        .get();
+    if (dup.docs.isNotEmpty) return;
+    // Available balance derived from the ledger, never from a
+    // stored editable number.
+    final txSnap =
+        await _transactions.where('user_id', isEqualTo: uid).get();
+    final txs = txSnap.docs.map(VibeTransaction.fromDoc).toList();
+    final balances = WalletBalances.fromTransactions(txs);
+    if (amount > balances.available) {
+      throw Exception(
+          'Insufficient available balance. Pending rewards cannot be withdrawn.');
+    }
+    final reqRef = _withdrawalRequests.doc();
+    final txRef = _transactions.doc();
+    final now = DateTime.now();
+    final hold = VibeTransaction(
+      id: txRef.id,
+      userId: uid,
+      type: 'withdrawal',
+      amount: -amount,
+      status: 'pending',
+      idempotencyKey: idempotencyKey,
+      reference: reqRef.id,
+      createdAt: now,
+    );
+    final newBalances =
+        WalletBalances.fromTransactions([...txs, hold]);
+    final batch = _dbSafe.batch();
+    batch.set(reqRef, {
+      'user_id': uid,
+      'amount': amount,
+      'currency': WalletRules.currency,
+      'payout_method': payoutMethod,
+      'payout_account': account,
+      'status': VibeWithdrawal.statusPendingReview,
+      'idempotency_key': idempotencyKey,
+      'reviewed_at': null,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+    batch.set(txRef, {
+      'user_id': uid,
+      'type': 'withdrawal',
+      'amount': -amount,
+      'currency': WalletRules.currency,
+      'status': 'pending',
+      'idempotency_key': idempotencyKey,
+      'reference': reqRef.id,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+    batch.set(
+      _wallets.doc(uid),
+      {
+        'user_id': uid,
+        'currency': WalletRules.currency,
+        'cached_pending': newBalances.pending,
+        'cached_available': newBalances.available,
+        'cached_paid': newBalances.paid,
+        'updated_at': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+  }
+
+  /// Records a referral for a freshly signed-up user who entered
+  /// someone's code (blueprint Section 8). Best-effort and silent:
+  /// an unknown code, a self-referral, or a duplicate sign-up
+  /// simply records nothing, and a failure here must NEVER break
+  /// signup. No reward is created — qualification is decided
+  /// later under the published rules, with abuse checks.
+  Future<void> recordReferral({
+    required String newUid,
+    required String rawCode,
+  }) async {
+    final code = rawCode.trim().toUpperCase();
+    if (code.isEmpty) return;
+    try {
+      final q = await _users
+          .where('referralCode', isEqualTo: code)
+          .limit(1)
+          .get();
+      if (q.docs.isEmpty) return;
+      final referrerId = q.docs.first.id;
+      if (referrerId == newUid) return;
+      final existing = await _referrals
+          .where('referred_user_id', isEqualTo: newUid)
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) return;
+      await _referrals.add({
+        'referrer_id': referrerId,
+        'referred_user_id': newUid,
+        'code': code,
+        'qualification_status': 'pending',
+        'reward_transaction_id': null,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('recordReferral failed: $e');
     }
   }
 }

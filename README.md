@@ -7,4 +7,4 @@ Short-video app (TikTok/SnackVideo style) — Phase 1 MVP: signup/login with per
 - Builds run on GitHub Actions; every push to `main` publishes a downloadable APK under Releases.
 - APK is arm64-v8a only (small download size).
 
-Later phases (per blueprint): Discover/search, Inbox/notifications, Wallet/monetization, Admin panel, website.
+Later phases (per blueprint): Discover/search and Inbox/notifications shipped in Phase 2; Wallet/monetization (ledger, withdrawal requests, referral codes — test mode, no real payouts until payment-provider setup) shipped in Phase 3. Still to come: Admin panel, website.

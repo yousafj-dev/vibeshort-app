@@ -6,6 +6,7 @@ import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/home/video_viewer_screen.dart';
 import 'package:vibeshort/screens/profile/edit_profile_screen.dart';
 import 'package:vibeshort/screens/profile/settings_screen.dart';
+import 'package:vibeshort/screens/wallet/wallet_screen.dart';
 
 /// Own profile: header (photo, name, @username, bio), stats
 /// (Videos / Following / Followers / Likes), Edit Profile button
@@ -128,6 +129,27 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       icon: const Icon(Icons.edit_outlined, size: 18),
                       label: const Text('Edit profile'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(46),
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                            builder: (_) => const WalletScreen()),
+                      ),
+                      icon: const Icon(
+                          Icons.account_balance_wallet_outlined,
+                          size: 18),
+                      label: const Text('Wallet'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.white,
                         minimumSize: const Size.fromHeight(46),

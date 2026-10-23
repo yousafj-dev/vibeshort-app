@@ -39,11 +39,17 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            Test build of VibeShort (short video app) — Phase 2:
-            5-tab navigation (Home, Discover, Create, Inbox, Profile),
-            Following | For You home tabs, Discover search + trending
-            hashtags, tappable hashtags, and Inbox notifications
-            (likes, comments, follows) with an unread badge.
+            Test build of VibeShort (short video app) — Phase 3:
+            Wallet with a transaction ledger (balances derived from
+            the ledger: pending / available / paid out), withdrawal
+            requests (minimum Rs 500, Easypaisa/JazzCash, recorded as
+            Pending review), published payout rules, and referral
+            codes (share yours from the Wallet; enter one at sign up).
+            Monetization is in TEST MODE: no real payouts until
+            payment-provider setup, and balances start at Rs 0.
+            Everything from Phase 2 stays: 5-tab navigation,
+            Following | For You, Discover search + hashtags, Inbox
+            notifications with unread badge.
             Install steps: uninstall any old VibeShort build first if one
             is installed, then install this APK and allow "Install unknown
             apps" when asked.
