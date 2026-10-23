@@ -39,26 +39,24 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            Test build of VibeShort (short video app) — Editing phase:
-            filters, effects, trim and music for every video.
-            Record in the app's own camera and the look is LIVE over
-            the preview: all 20 colour filters and the grade effects
-            tint the camera feed in real time (Cinematic also shows
-            its letterbox bars, Frame its white border); structural
-            effects that can't render live on a camera feed say so
-            on screen and are applied exactly at post time. Gallery
-            clips get the same live-look preview on the edit screen,
-            plus trim (start/end sliders, the preview loops the kept
-            segment), device-music mix or mute, and text overlay with
-            position control. On Post, FFmpeg bakes the exact
-            filter/effect chain, trim, music and text into the
-            uploaded video (20 filters, 25 effects); with no edits
-            the original file uploads untouched, and if processing
-            fails the unedited file is never silently posted.
-            Everything from Phase 4 stays: Admin panel + safety
-            (reports, block, suspend, moderation, withdrawal
-            review), Wallet with the ledger and referral codes,
-            5-tab navigation, Discover, Inbox, Following | For You.
+            Test build of VibeShort (short video app) — Sound pages
+            round: the notice on the Record screen no longer covers
+            the 15s/60s chips, and every video's sound line now
+            opens a TikTok-style sound page. Library sounds show
+            their track and artist; original sounds credit the
+            creator (@username) and list the source video plus
+            every video that reused its audio. "Use this sound"
+            opens the camera with that sound attached — it plays
+            while you record and is mixed into the posted video,
+            with the attribution stored on the video.
+            Everything from before stays: TikTok-style camera with
+            30 live looks and post-applied structural effects,
+            own-video actions (Download / Pin / Edit captions /
+            Delete), feed long-press menu, Settings Wallet entry,
+            12 built-in royalty-free sounds, tap-Home and
+            pull-down feed refresh, Admin panel + safety, Wallet
+            with ledger and referrals, 5-tab navigation, Discover,
+            Inbox, Following | For You.
             Install steps: uninstall any old VibeShort build first if one
             is installed, then install this APK and allow "Install unknown
             apps" when asked.

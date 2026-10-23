@@ -1,8 +1,11 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:vibeshort/models/vibe_video.dart';
 
 /// One built-in sound for the Create flow (fix round, item 6).
 ///
@@ -145,6 +148,34 @@ class BuiltInSounds {
   }
 }
 
+/// A sound chosen OUTSIDE the Create flow (sound page round):
+/// "Use this sound" on a sound page hands one of these to the
+/// camera so the track is already attached when recording
+/// starts. [filePath] is a local audio file — played during
+/// recording and mixed in at post time, exactly like a sound
+/// picked inside the Create flow.
+///
+/// For a library sound, [soundId] is set and the source fields
+/// stay null. For an ORIGINAL sound, [soundId] is null and
+/// [sourceVideoId] / [ownerId] carry the attribution that gets
+/// stored on the posted video; [displayName] is then
+/// 'original sound — @<owner>'.
+class PreselectedSound {
+  final String displayName;
+  final String? soundId;
+  final String filePath;
+  final String? sourceVideoId;
+  final String? ownerId;
+
+  const PreselectedSound({
+    required this.displayName,
+    required this.filePath,
+    this.soundId,
+    this.sourceVideoId,
+    this.ownerId,
+  });
+}
+
 /// Downloads a built-in sound to the app's documents folder on
 /// first use and returns the cached file afterwards. The cache is
 /// what gets played during camera recording and what FFmpeg mixes
@@ -171,5 +202,63 @@ class SoundCache {
       throw Exception('Could not download the sound. Check your connection.');
     }
     return file;
+  }
+}
+
+/// The audio side of "Use this sound" for ORIGINAL sounds
+/// (sound page round): the source is another video's own audio
+/// track. The source video is downloaded once, its audio is
+/// extracted to an .m4a with FFmpeg, and that file is cached —
+/// from then on it behaves exactly like a library track (played
+/// during recording, mixed in at post time).
+class OriginalSoundCache {
+  OriginalSoundCache._();
+
+  static Future<File> audioFileFor(VibeVideo source) async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}/original_sounds');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    final out = File('${dir.path}/${source.id}.m4a');
+    if (await out.exists() && await out.length() > 10000) return out;
+
+    final srcFile = File('${dir.path}/${source.id}_src.mp4');
+    try {
+      debugPrint('Downloading source video for its sound …');
+      await Dio().download(
+        source.videoUrl,
+        srcFile.path,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 180),
+          sendTimeout: const Duration(seconds: 30),
+        ),
+      );
+      if (!await srcFile.exists() || await srcFile.length() <= 10000) {
+        throw Exception(
+            'Could not download that video. Check your connection.');
+      }
+      final session = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i', srcFile.path,
+        '-vn',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        out.path,
+      ]);
+      final rc = await session.getReturnCode();
+      if (!ReturnCode.isSuccess(rc) ||
+          !await out.exists() ||
+          await out.length() <= 10000) {
+        if (await out.exists()) await out.delete();
+        throw Exception('That video has no sound to reuse.');
+      }
+      return out;
+    } finally {
+      // The extracted audio is the cache; the video copy goes.
+      if (await srcFile.exists()) {
+        try {
+          await srcFile.delete();
+        } catch (_) {}
+      }
+    }
   }
 }

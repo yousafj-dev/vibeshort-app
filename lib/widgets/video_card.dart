@@ -12,6 +12,7 @@ import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/screens/discover/hashtag_videos_screen.dart';
 import 'package:vibeshort/screens/profile/public_profile_screen.dart';
+import 'package:vibeshort/screens/sound/sound_page_screen.dart';
 import 'package:vibeshort/widgets/comments_sheet.dart';
 import 'package:vibeshort/widgets/own_video_sheet.dart';
 import 'package:vibeshort/widgets/report_sheet.dart';
@@ -583,6 +584,16 @@ class _VideoCardState extends State<VideoCard>
     );
   }
 
+  /// Opens the sound page for this video's sound (sound page
+  /// round): the library track page, or the original-sound page
+  /// anchored at the video that first carried the audio.
+  void _openSoundPage() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+          builder: (_) => SoundPageScreen(video: widget.video)),
+    );
+  }
+
   /// Overflow menu (Phase 4, blueprint Section 9): report this
   /// video, or block its creator so their videos leave my feeds.
   void _openMoreMenu() {
@@ -757,21 +768,29 @@ class _VideoCardState extends State<VideoCard>
                   ),
                 ],
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.music_note,
-                        size: 15, color: Colors.white),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        video.soundName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 13),
+                // Sound line (sound page round): library sounds
+                // show the track name, everything else shows the
+                // TikTok-style original-sound attribution. The
+                // whole line opens the sound page.
+                GestureDetector(
+                  onTap: _openSoundPage,
+                  behavior: HitTestBehavior.opaque,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.music_note,
+                          size: 15, color: Colors.white),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          video.feedSoundLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 13),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),

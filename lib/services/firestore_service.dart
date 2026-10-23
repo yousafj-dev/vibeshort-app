@@ -205,6 +205,8 @@ class FirestoreService {
     required String caption,
     String? soundName,
     String? soundId,
+    String? soundSourceVideoId,
+    String? soundOwnerId,
   }) async {
     final auth = AuthService.instance;
     final uid = auth.uid;
@@ -240,6 +242,10 @@ class FirestoreService {
       // Fix round: built-in sound attribution, stored alongside
       // the display name so the sound can be re-opened later.
       soundId: soundId ?? '',
+      // Sound page round: "Use this sound" attribution when the
+      // audio came from another video's original sound.
+      soundSourceVideoId: soundSourceVideoId ?? '',
+      soundOwnerId: soundOwnerId ?? '',
       createdAt: DateTime.now(),
     ).toMap());
     return doc.id;
@@ -528,6 +534,53 @@ class FirestoreService {
     final t = tag.toLowerCase();
     return videoFeed(limit: 300).map((videos) =>
         videos.where((v) => v.effectiveHashtags.contains(t)).toList());
+  }
+
+  // ---------------------------------------------------------------
+  // Sound pages (sound page round)
+  // ---------------------------------------------------------------
+
+  /// All videos using one built-in library sound, newest first.
+  /// Like [userVideos], the query avoids orderBy (no composite
+  /// index exists for it) and sorting happens client-side.
+  Stream<List<VibeVideo>> videosWithSoundId(String soundId) {
+    _ensureBlockedCache();
+    _ensurePrivacyCaches();
+    try {
+      return _videos
+          .where('soundId', isEqualTo: soundId)
+          .snapshots()
+          .map((s) => s.docs
+              .map(VibeVideo.fromDoc)
+              .where(_isVisible)
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
+    } catch (e) {
+      debugPrint('videosWithSoundId failed: $e');
+      return Stream.value(const []);
+    }
+  }
+
+  /// All videos made with "Use this sound" on one ORIGINAL
+  /// sound — i.e. whose audio source is the video
+  /// [sourceVideoId]. The source video itself is NOT part of
+  /// this result; the sound page adds it as the first tile.
+  Stream<List<VibeVideo>> videosUsingOriginalSound(String sourceVideoId) {
+    _ensureBlockedCache();
+    _ensurePrivacyCaches();
+    try {
+      return _videos
+          .where('soundSourceVideoId', isEqualTo: sourceVideoId)
+          .snapshots()
+          .map((s) => s.docs
+              .map(VibeVideo.fromDoc)
+              .where(_isVisible)
+              .toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
+    } catch (e) {
+      debugPrint('videosUsingOriginalSound failed: $e');
+      return Stream.value(const []);
+    }
   }
 
   /// One-shot fetch of a single video (Inbox deep-links).

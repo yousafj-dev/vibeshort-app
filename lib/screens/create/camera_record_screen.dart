@@ -31,7 +31,14 @@ class CameraRecordScreen extends StatefulWidget {
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
 
-  const CameraRecordScreen({super.key, this.onPosted});
+  /// A sound preselected before this screen opened (sound page
+  /// round): "Use this sound" on a sound page — a library track
+  /// or another video's original sound, already downloaded.
+  /// It starts attached, plays during recording and is mixed
+  /// in at post time, like a sound picked on this screen.
+  final PreselectedSound? initialSound;
+
+  const CameraRecordScreen({super.key, this.onPosted, this.initialSound});
 
   @override
   State<CameraRecordScreen> createState() => _CameraRecordScreenState();
@@ -69,10 +76,17 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   VideoEffect _effect = VideoEffects.none;
   _Strip _strip = _Strip.looks;
 
-  /// Built-in sound picked before recording (item 6). The player
-  /// performs the track during recording; the edit screen mixes
-  /// the same cached file into the posted video.
-  VibeSound? _sound;
+  /// Sound attached before recording (item 6 + sound page
+  /// round). The player performs the track during recording; the
+  /// edit screen mixes the same cached file into the posted
+  /// video. [_soundId] is set only for built-in library sounds;
+  /// an ORIGINAL sound reused via "Use this sound" instead
+  /// carries [_soundSourceVideoId] / [_soundOwnerId] attribution
+  /// and a display name of 'original sound — @<owner>'.
+  String? _soundId;
+  String? _soundDisplayName;
+  String? _soundSourceVideoId;
+  String? _soundOwnerId;
   File? _soundFile;
   VideoPlayerController? _soundPlayer;
 
@@ -81,6 +95,37 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _setup();
+    final pre = widget.initialSound;
+    if (pre != null) _applyPreselectedSound(pre);
+  }
+
+  /// Attaches a sound handed in from a sound page ("Use this
+  /// sound"): same state as an in-screen pick, plus the
+  /// original-sound attribution fields when it has them.
+  Future<void> _applyPreselectedSound(PreselectedSound pre) async {
+    final file = File(pre.filePath);
+    if (!await file.exists()) return;
+    final player = VideoPlayerController.file(file);
+    try {
+      await player.initialize();
+      await player.setLooping(true);
+    } catch (e) {
+      debugPrint('preselected sound init failed: $e');
+      await player.dispose();
+      return;
+    }
+    if (!mounted) {
+      player.dispose();
+      return;
+    }
+    setState(() {
+      _soundId = pre.soundId;
+      _soundDisplayName = pre.displayName;
+      _soundSourceVideoId = pre.sourceVideoId;
+      _soundOwnerId = pre.ownerId;
+      _soundFile = file;
+      _soundPlayer = player;
+    });
   }
 
   @override
@@ -227,12 +272,15 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   Future<void> _pickSound() async {
     if (_recording) return;
     final choice =
-        await showSoundsSheet(context, selectedId: _sound?.id);
+        await showSoundsSheet(context, selectedId: _soundId);
     if (choice == null || !mounted) return;
     if (choice.cleared) {
       await _soundPlayer?.dispose();
       setState(() {
-        _sound = null;
+        _soundId = null;
+        _soundDisplayName = null;
+        _soundSourceVideoId = null;
+        _soundOwnerId = null;
         _soundFile = null;
         _soundPlayer = null;
       });
@@ -255,7 +303,10 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       return;
     }
     setState(() {
-      _sound = pick.sound;
+      _soundId = pick.sound.id;
+      _soundDisplayName = pick.sound.name;
+      _soundSourceVideoId = null;
+      _soundOwnerId = null;
       _soundFile = pick.file;
       _soundPlayer = player;
     });
@@ -265,7 +316,10 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     await _soundPlayer?.dispose();
     if (!mounted) return;
     setState(() {
-      _sound = null;
+      _soundId = null;
+      _soundDisplayName = null;
+      _soundSourceVideoId = null;
+      _soundOwnerId = null;
       _soundFile = null;
       _soundPlayer = null;
     });
@@ -350,9 +404,11 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
             videoPath: file.path,
             initialFilterName: _filter.name,
             initialEffectName: _effect.name,
-            initialSoundId: _sound?.id,
-            initialSoundName: _sound?.name,
+            initialSoundId: _soundId,
+            initialSoundName: _soundDisplayName,
             initialSoundPath: _soundFile?.path,
+            initialSoundSourceVideoId: _soundSourceVideoId,
+            initialSoundOwnerId: _soundOwnerId,
             onPosted: widget.onPosted,
           ),
         ),
@@ -482,19 +538,33 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (_effectNotPreviewable)
+                        // Layout fix (sound page round): the notice
+                        // is a compact pill in the normal column
+                        // flow ABOVE the duration chips — in-flow,
+                        // so it pushes the chips down instead of
+                        // rendering over them — and its wide side
+                        // margins keep it clear of the right-side
+                        // tools column at every screen height.
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Text(
-                            '${_effect.name} is applied when you post — '
-                            'it can\'t be previewed live.',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11.5,
-                              shadows: [
-                                Shadow(
-                                    color: Colors.black87, blurRadius: 4),
-                              ],
+                          padding: const EdgeInsets.only(
+                              bottom: 8, left: 64, right: 64),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Text(
+                              '${_effect.name} is applied when you post — '
+                              'it can\'t be previewed live.',
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
@@ -552,10 +622,10 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   /// button) or invites a pick. Hidden while recording.
   Widget _soundPill() {
     if (_recording) return const SizedBox.shrink();
-    final sound = _sound;
+    final soundName = _soundDisplayName;
     return Container(
       padding: EdgeInsets.only(
-          left: 12, right: sound == null ? 14 : 4, top: 4, bottom: 4),
+          left: 12, right: soundName == null ? 14 : 4, top: 4, bottom: 4),
       decoration: BoxDecoration(
         color: Colors.black54,
         borderRadius: BorderRadius.circular(20),
@@ -574,7 +644,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 190),
                   child: Text(
-                    sound == null ? 'Add sound' : sound.name,
+                    soundName ?? 'Add sound',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -586,7 +656,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
               ],
             ),
           ),
-          if (sound != null)
+          if (soundName != null)
             IconButton(
               onPressed: _clearSound,
               visualDensity: VisualDensity.compact,

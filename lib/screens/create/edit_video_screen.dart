@@ -36,6 +36,13 @@ class EditVideoScreen extends StatefulWidget {
   final String? initialSoundName;
   final String? initialSoundPath;
 
+  /// "Use this sound" attribution (sound page round): when the
+  /// incoming sound is another video's ORIGINAL sound, the
+  /// source video id and its owner's uid ride along so the
+  /// posted doc credits them. Null for library/device sounds.
+  final String? initialSoundSourceVideoId;
+  final String? initialSoundOwnerId;
+
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
 
@@ -47,6 +54,8 @@ class EditVideoScreen extends StatefulWidget {
     this.initialSoundId,
     this.initialSoundName,
     this.initialSoundPath,
+    this.initialSoundSourceVideoId,
+    this.initialSoundOwnerId,
     this.onPosted,
   });
 
@@ -68,6 +77,12 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   /// Built-in sound id when the attached music is one of the
   /// app's royalty-free sounds (item 6); null for device files.
   String? _soundId;
+
+  /// "Use this sound" attribution (sound page round): set while
+  /// the attached music is another video's original sound;
+  /// cleared whenever the music changes to anything else.
+  String? _soundSourceVideoId;
+  String? _soundOwnerId;
   OverlayPosition _textPos = OverlayPosition.bottom;
 
   // Trim window in seconds (start 0, end = full duration = untrimmed).
@@ -103,6 +118,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       _musicPath = widget.initialSoundPath;
       _musicName = widget.initialSoundName;
       _soundId = widget.initialSoundId;
+      _soundSourceVideoId = widget.initialSoundSourceVideoId;
+      _soundOwnerId = widget.initialSoundOwnerId;
     }
     _initPlayer();
   }
@@ -199,6 +216,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         _musicMode = MusicMode.replace;
         // A device file replaces any built-in sound attribution.
         _soundId = null;
+        _soundSourceVideoId = null;
+        _soundOwnerId = null;
       });
     } catch (e) {
       debugPrint('pickMusic failed: $e');
@@ -221,6 +240,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         _musicPath = null;
         _musicName = null;
         _soundId = null;
+        _soundSourceVideoId = null;
+        _soundOwnerId = null;
       });
       _player?.setVolume(1);
       return;
@@ -231,6 +252,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       _musicPath = pick.file.path;
       _musicName = pick.sound.name;
       _soundId = pick.sound.id;
+      _soundSourceVideoId = null;
+      _soundOwnerId = null;
     });
     _player?.setVolume(1);
   }
@@ -239,7 +262,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
     setState(() {
       _musicMode = mode;
       // Leaving replace mode drops the sound attribution.
-      if (mode != MusicMode.replace) _soundId = null;
+      if (mode != MusicMode.replace) {
+        _soundId = null;
+        _soundSourceVideoId = null;
+        _soundOwnerId = null;
+      }
     });
     // Preview mirrors it: mute silences the preview, anything else
     // restores the original audio.
@@ -292,22 +319,37 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         },
       );
       String? soundName;
+      String? outSoundId;
+      String? outSourceVideoId;
+      String? outOwnerId;
       if (_musicMode == MusicMode.replace) {
         // Posting with picked music: name the sound after the
         // track. A built-in sound keeps its exact catalogue name
-        // and stores its id for attribution (item 6); a device
-        // file is named after the file, as before.
-        soundName = _soundId != null
-            ? _musicName
-            : (_musicName ?? 'Music')
-                .replaceAll(RegExp(r'\.[^.]+$'), '')
-                .replaceAll('_', ' ');
+        // and stores its id for attribution (item 6); a reused
+        // ORIGINAL sound keeps its stored display name
+        // ('original sound — @<owner>') plus the source/owner
+        // attribution (sound page round); a device file is
+        // named after the file, as before.
+        if (_soundId != null) {
+          soundName = _musicName;
+          outSoundId = _soundId;
+        } else if (_soundSourceVideoId != null) {
+          soundName = _musicName;
+          outSourceVideoId = _soundSourceVideoId;
+          outOwnerId = _soundOwnerId;
+        } else {
+          soundName = (_musicName ?? 'Music')
+              .replaceAll(RegExp(r'\.[^.]+$'), '')
+              .replaceAll('_', ' ');
+        }
       }
       await FirestoreService.instance.addVideo(
         videoUrl: url,
         caption: _caption.text,
         soundName: soundName,
-        soundId: _musicMode == MusicMode.replace ? _soundId : null,
+        soundId: outSoundId,
+        soundSourceVideoId: outSourceVideoId,
+        soundOwnerId: outOwnerId,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -26,6 +26,15 @@ class VibeVideo {
   /// e.g. 'sound_backbeat'. Empty for original/device sounds.
   final String soundId;
 
+  /// When this video was made with "Use this sound" on someone
+  /// else's ORIGINAL sound (sound page round): the id of the
+  /// video whose own audio track was reused, and that video's
+  /// owner uid. Empty for library sounds, device-file music and
+  /// true originals. The anchor video of an original sound is the
+  /// video itself when this is empty and [soundId] is also empty.
+  final String soundSourceVideoId;
+  final String soundOwnerId;
+
   /// Pinned to the top of the creator's profile grid (fix round).
   /// Older docs have no field and read as unpinned.
   final bool pinned;
@@ -55,6 +64,8 @@ class VibeVideo {
     this.hashtags = const [],
     this.soundName = 'Original sound',
     this.soundId = '',
+    this.soundSourceVideoId = '',
+    this.soundOwnerId = '',
     this.pinned = false,
     this.pinnedAt,
     this.moderationStatus = 'active',
@@ -63,6 +74,36 @@ class VibeVideo {
   });
 
   bool get isRemoved => moderationStatus == 'removed';
+
+  /// True when a built-in library sound is attached.
+  bool get hasLibrarySound => soundId.isNotEmpty;
+
+  /// True when this video reuses another video's original audio
+  /// via "Use this sound" (its [soundName] was stored at post
+  /// time as 'original sound — @<owner>').
+  bool get usesOriginalSound => soundId.isEmpty && soundSourceVideoId.isNotEmpty;
+
+  /// The video that anchors this video's ORIGINAL sound: the
+  /// source video when one was reused, otherwise this video
+  /// itself. Only meaningful when [soundId] is empty.
+  String get originalSoundAnchorId =>
+      soundSourceVideoId.isNotEmpty ? soundSourceVideoId : id;
+
+  /// The sound line shown under the caption in the feed
+  /// (sound page round, TikTok style):
+  ///  - library sound → the track's name;
+  ///  - reused original → the stored 'original sound — @owner';
+  ///  - true original / untouched sound name → derived here as
+  ///    'original sound — @<creator>';
+  ///  - device-file music keeps its track name, as before.
+  String get feedSoundLabel {
+    if (soundId.isNotEmpty) return soundName;
+    if (soundSourceVideoId.isNotEmpty) return soundName;
+    if (soundName.isEmpty || soundName == 'Original sound') {
+      return 'original sound — @$username';
+    }
+    return soundName;
+  }
 
   /// Extracts `#tags` from a caption: lowercase, without the '#',
   /// de-duplicated, in first-appearance order.
@@ -119,6 +160,8 @@ class VibeVideo {
           .toList(),
       soundName: (d['soundName'] ?? 'Original sound') as String,
       soundId: (d['soundId'] ?? '') as String,
+      soundSourceVideoId: (d['soundSourceVideoId'] ?? '') as String,
+      soundOwnerId: (d['soundOwnerId'] ?? '') as String,
       pinned: (d['pinned'] ?? false) as bool,
       pinnedAt:
           d['pinnedAt'] is Timestamp ? (d['pinnedAt'] as Timestamp).toDate() : null,
@@ -140,6 +183,8 @@ class VibeVideo {
         'hashtags': parseHashtags(caption),
         'soundName': soundName,
         'soundId': soundId,
+        'soundSourceVideoId': soundSourceVideoId,
+        'soundOwnerId': soundOwnerId,
         'moderationStatus': 'active',
         'views': 0,
         'createdAt': FieldValue.serverTimestamp(),
