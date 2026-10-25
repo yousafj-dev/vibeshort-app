@@ -32,6 +32,9 @@ dependencies:
   path_provider: 2.1.5
   # Settings pack: render the "Your QR code" profile code.
   qr_flutter: ^4.1.0
+  # Camera upgrade round: REAL on-device face detection for the
+  # face stickers (free ML Kit, no API key, runs fully on-phone).
+  google_mlkit_face_detection: 0.13.1
 
 dev_dependencies:
   flutter_test:

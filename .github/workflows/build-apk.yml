@@ -39,17 +39,19 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            Test build of VibeShort (short video app) — Sound pages
-            round: the notice on the Record screen no longer covers
-            the 15s/60s chips, and every video's sound line now
-            opens a TikTok-style sound page. Library sounds show
-            their track and artist; original sounds credit the
-            creator (@username) and list the source video plus
-            every video that reused its audio. "Use this sound"
-            opens the camera with that sound attached — it plays
-            while you record and is mixed into the posted video,
-            with the attribution stored on the video.
-            Everything from before stays: TikTok-style camera with
+            Test build of VibeShort (short video app) — Camera
+            upgrade round. NEW: pinch-to-zoom on the camera
+            preview plus - / + zoom buttons beside the record
+            button (zoom works WHILE recording, up to whatever
+            your camera supports). NEW: a Face tab on the Record
+            screen with real face-tracking stickers (Shades,
+            Crown, Stars) — on-device face detection follows your
+            face live while you record, and the sticker is baked
+            into the posted video following your face, exactly
+            where you saw it. Your filter/effect also stays
+            visible on screen the whole time you record.
+            Everything from before stays: TikTok-style sound
+            pages and "Use this sound", TikTok-style camera with
             30 live looks and post-applied structural effects,
             own-video actions (Download / Pin / Edit captions /
             Delete), feed long-press menu, Settings Wallet entry,

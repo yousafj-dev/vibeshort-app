@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:vibeshort/services/face_effects.dart';
 
 /// A named video filter. [ffmpegFilter] is the `-vf` fragment baked into
 /// the posted video; [previewMatrix] is the ColorFilter approximation
@@ -306,6 +307,14 @@ class VideoEditOptions {
   final Duration trimStart;
   final Duration? trimEnd;
 
+  /// Face sticker bake (camera upgrade round): the sticker and
+  /// face track logged while recording in the in-app camera.
+  /// When set, processing switches to a filter_complex that draws
+  /// the sticker over the face at the logged positions BEFORE the
+  /// filter/effect chain, so later grades transform video and
+  /// sticker together — exactly like the live preview stack.
+  final FaceBakeData? faceBake;
+
   const VideoEditOptions({
     required this.filter,
     this.effect = VideoEffects.none,
@@ -315,6 +324,7 @@ class VideoEditOptions {
     this.overlayPosition = OverlayPosition.bottom,
     this.trimStart = Duration.zero,
     this.trimEnd,
+    this.faceBake,
   });
 
   bool get hasEdits =>
@@ -323,7 +333,8 @@ class VideoEditOptions {
       musicMode != MusicMode.original ||
       overlayText.trim().isNotEmpty ||
       trimStart > Duration.zero ||
-      trimEnd != null;
+      trimEnd != null ||
+      faceBake != null;
 }
 
 class VideoFilters {
@@ -659,6 +670,7 @@ class VideoEditService {
     required VideoEditOptions options,
     required Duration videoDuration,
     required int videoHeight,
+    int videoWidth = 0,
   }) async {
     final tmp = await getTemporaryDirectory();
     final out = File(
@@ -693,6 +705,7 @@ class VideoEditService {
       vfParts.add(baseChain);
     }
     final text = options.overlayText.trim();
+    String? textFilter;
     if (text.isNotEmpty) {
       final font = await _fontFile();
       final y = switch (options.overlayPosition) {
@@ -701,13 +714,40 @@ class VideoEditService {
         OverlayPosition.bottom => 'h-text_h-h*0.09',
       };
       final fontSize = (videoHeight / 17).round().clamp(24, 96);
-      vfParts.add("drawtext=fontfile=${font.path}"
+      textFilter = "drawtext=fontfile=${font.path}"
           ":text='${_sanitize(text)}'"
           ':fontcolor=white:fontsize=$fontSize'
           ':borderw=3:bordercolor=black'
-          ':x=(w-text_w)/2:y=$y');
+          ':x=(w-text_w)/2:y=$y';
+      vfParts.add(textFilter);
     }
     final vf = vfParts.isEmpty ? null : vfParts.join(',');
+
+    // Face sticker bake (camera upgrade round): compile the logged
+    // face track into ~0.5s segments and shift them from the
+    // recorded timeline into the OUTPUT timeline (an input seek
+    // drops everything before the trim start). No surviving
+    // segments → no face stage at all (never a fake sticker).
+    List<FaceBakeSegment>? faceSegs;
+    File? stickerFile;
+    final face = options.faceBake;
+    if (face != null && videoWidth > 0 && videoHeight > 0) {
+      final raw = face.track.buildSegments(face.kind);
+      final shift = (trimmed && start > Duration.zero)
+          ? start.inMilliseconds / 1000.0
+          : 0.0;
+      final maxT = effDur.inMilliseconds / 1000.0;
+      final shifted = <FaceBakeSegment>[];
+      for (final s in raw) {
+        final a = (s.start - shift).clamp(0.0, maxT).toDouble();
+        final b = (s.end - shift).clamp(0.0, maxT).toDouble();
+        if (b - a >= 0.05) shifted.add(FaceBakeSegment(a, b, s.rect));
+      }
+      if (shifted.isNotEmpty) {
+        faceSegs = shifted;
+        stickerFile = await renderStickerPng(face.kind);
+      }
+    }
 
     final args = <String>['-y'];
     if (trimmed && start > Duration.zero) {
@@ -715,7 +755,54 @@ class VideoEditService {
       args.addAll(['-ss', _secs(start)]);
     }
     args.addAll(['-i', input.path]);
-    switch (options.musicMode) {
+    if (stickerFile != null) {
+      // ---- Face bake path: filter_complex ----------------------
+      // Input order: 0 = video, 1 = music (replace mode only),
+      // sticker PNG last — the graph references it by that index.
+      if (options.musicMode == MusicMode.replace) {
+        args.addAll(['-stream_loop', '-1', '-i', options.musicPath!]);
+      }
+      args.addAll(['-i', stickerFile.path]);
+      final stickerIndex =
+          options.musicMode == MusicMode.replace ? 2 : 1;
+      final graph = _faceFilterGraph(
+        stickerIndex: stickerIndex,
+        segments: faceSegs!,
+        track: face!.track,
+        videoWidth: videoWidth,
+        videoHeight: videoHeight,
+        baseChain: baseChain,
+        textFilter: textFilter,
+      );
+      args.addAll(['-filter_complex', graph, '-map', '[vout]']);
+      switch (options.musicMode) {
+        case MusicMode.original:
+          args.addAll([
+            '-map', '0:a?',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k',
+          ]);
+          break;
+        case MusicMode.mute:
+          args.addAll([
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-an',
+          ]);
+          break;
+        case MusicMode.replace:
+          final dur = effDur.inMilliseconds / 1000.0;
+          final fadeStart = (dur - 2).clamp(0.0, dur);
+          args.addAll([
+            '-map', '1:a:0',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-af', 'afade=t=out:st=$fadeStart:d=2',
+            '-c:a', 'aac', '-b:a', '160k',
+            '-shortest',
+          ]);
+          break;
+      }
+    } else {
+      switch (options.musicMode) {
       case MusicMode.original:
         if (vf != null) args.addAll(['-vf', vf]);
         args.addAll([
@@ -747,6 +834,7 @@ class VideoEditService {
         ]);
         break;
     }
+    }
     if (trimmed) args.addAll(['-t', _secs(effDur)]);
     args.addAll(['-movflags', '+faststart', out.path]);
 
@@ -759,6 +847,67 @@ class VideoEditService {
       throw Exception(_failMsg);
     }
     return out;
+  }
+
+  /// Builds the filter_complex for a face-sticker bake:
+  ///
+  ///   [0:v] + per-segment scaled sticker overlays  → face stage
+  ///   face stage → the filter/effect chain (if any) → text (if
+  ///   any) → format → [vout]
+  ///
+  /// The sticker PNG (input [stickerIndex]) is a single frame; the
+  /// overlay filter's default EOF action repeats that frame, and
+  /// each segment's `enable` window shows it only while the face
+  /// was there. Segment rects arrive in upright IMAGE coordinates
+  /// and are scaled into the video's decoded pixel space here.
+  String _faceFilterGraph({
+    required int stickerIndex,
+    required List<FaceBakeSegment> segments,
+    required FaceTrackData track,
+    required int videoWidth,
+    required int videoHeight,
+    required String? baseChain,
+    required String? textFilter,
+  }) {
+    final sx = videoWidth / track.imageSize.width;
+    final sy = videoHeight / track.imageSize.height;
+    final n = segments.length;
+    final g = StringBuffer();
+    if (n > 1) {
+      g.write('[$stickerIndex:v]split=$n');
+      for (var i = 0; i < n; i++) {
+        g.write('[fs$i]');
+      }
+      g.write(';');
+    }
+    for (var i = 0; i < n; i++) {
+      final s = segments[i];
+      final src = n > 1 ? 'fs$i' : '$stickerIndex:v';
+      final w = (s.rect.width * sx).round().clamp(2, 8192);
+      final h = (s.rect.height * sy).round().clamp(2, 8192);
+      g.write('[$src]scale=$w:$h[fst$i];');
+    }
+    var cur = '0:v';
+    for (var i = 0; i < n; i++) {
+      final s = segments[i];
+      final x = (s.rect.left * sx).round();
+      final y = (s.rect.top * sy).round();
+      final out = 'fv${i + 1}';
+      g.write("[$cur][fst$i]overlay=$x:$y:"
+          "enable='between(t,${s.start.toStringAsFixed(3)},"
+          "${s.end.toStringAsFixed(3)})'[$out];");
+      cur = out;
+    }
+    if (baseChain != null) {
+      g.write('[$cur]$baseChain[fbse];');
+      cur = 'fbse';
+    }
+    if (textFilter != null) {
+      g.write('[$cur]$textFilter[ftxt];');
+      cur = 'ftxt';
+    }
+    g.write('[$cur]format=yuv420p[vout]');
+    return g.toString();
   }
 
   /// Camcorder-style date stamp, e.g. "23 OCT 2026". Contains no

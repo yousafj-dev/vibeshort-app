@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:camera/camera.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/screens/create/edit_video_screen.dart';
+import 'package:vibeshort/services/face_effects.dart';
 import 'package:vibeshort/services/sounds_service.dart';
 import 'package:vibeshort/services/video_edit_service.dart';
 import 'package:vibeshort/widgets/sounds_sheet.dart';
@@ -27,6 +32,14 @@ import 'package:vibeshort/widgets/sounds_sheet.dart';
 ///  * "Add sound" pill (item 6): pick a built-in royalty-free
 ///    track BEFORE recording; it plays while you record and is
 ///    mixed into the posted video automatically.
+///  * Camera upgrade round: pinch-to-zoom + - / + steppers by
+///    the record button (zoom applies live, also mid-recording),
+///    and a Face strip with REAL ML Kit face-tracking stickers —
+///    drawn live over the face, logged while recording, and
+///    baked into the posted video by the edit screen's FFmpeg
+///    pass. The preview stack (filter matrix + overlays) is never
+///    torn down when recording starts, so the chosen look stays
+///    visible for the whole recording.
 class CameraRecordScreen extends StatefulWidget {
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
@@ -44,7 +57,7 @@ class CameraRecordScreen extends StatefulWidget {
   State<CameraRecordScreen> createState() => _CameraRecordScreenState();
 }
 
-enum _Strip { looks, effects }
+enum _Strip { looks, effects, face }
 
 class _CameraRecordScreenState extends State<CameraRecordScreen>
     with WidgetsBindingObserver {
@@ -67,6 +80,48 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   Timer? _countTimer;
 
   bool _flashOn = false;
+
+  // -------------------------------------------------------------
+  // Camera upgrade round: zoom + face effects
+  // -------------------------------------------------------------
+
+  /// Zoom state (item 1): bounds come from the device camera;
+  /// [_zoom] is applied LIVE via setZoomLevel, so pinch and the
+  /// +/- steppers work while recording too.
+  double _zoom = 1.0;
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _baseZoom = 1.0;
+  double? _pendingZoom;
+  bool _zoomInFlight = false;
+  bool _zoomLabelVisible = false;
+  Timer? _zoomLabelTimer;
+
+  /// Selected face sticker (item 3); null = no face effect.
+  FaceStickerKind? _faceKind;
+
+  /// On-device ML Kit detector (free, no API key, nothing leaves
+  /// the phone). Landmarks on for the eye-anchored stickers.
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(
+      enableLandmarks: true,
+      enableTracking: true,
+      minFaceSize: 0.12,
+      performanceMode: FaceDetectorMode.fast,
+    ),
+  );
+  bool _streaming = false;
+  bool _detectBusy = false;
+  DateTime _lastDetect = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Latest detected faces (upright image coordinates) for the
+  /// live overlay, plus the upright size of the analysed frames.
+  List<FaceGeometry> _faceGeo = [];
+  Size? _uprightSize;
+
+  /// Face positions logged while recording (the bake's source).
+  final Stopwatch _recWatch = Stopwatch();
+  List<FaceTrackSample> _track = [];
 
   /// Live look selected from the carousel. [_filter] / [_effect]
   /// stay in sync with it (they are what the edit screen receives);
@@ -133,6 +188,9 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _countTimer?.cancel();
+    _zoomLabelTimer?.cancel();
+    _stopFaceStream();
+    _faceDetector.close();
     _controller?.dispose();
     _soundPlayer?.dispose();
     super.dispose();
@@ -143,6 +201,8 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     final c = _controller;
     if (c == null || !c.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
+      // The image stream dies with the controller.
+      _streaming = false;
       c.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initCamera(_cameraIndex);
@@ -199,6 +259,21 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
         // camera has no torch at all.
         _flashOn = false;
       });
+      // Zoom bounds are per-camera (item 1).
+      try {
+        _minZoom = await c.getMinZoomLevel();
+        _maxZoom = await c.getMaxZoomLevel();
+      } catch (e) {
+        debugPrint('zoom bounds failed: $e');
+        _minZoom = 1.0;
+        _maxZoom = 1.0;
+      }
+      _zoom = 1.0.clamp(_minZoom, _maxZoom).toDouble();
+      // A face sticker survives camera (re)starts: rebind the
+      // detection stream to the fresh controller.
+      if (_faceKind != null && _controller == c) {
+        _startFaceStream();
+      }
     } on CameraException catch (e) {
       debugPrint('camera init failed: ${e.code}');
       if (mounted) {
@@ -218,8 +293,12 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
 
   Future<void> _flip() async {
     if (_recording || _cameras.length < 2) return;
+    await _stopFaceStream();
     _cameraIndex = (_cameraIndex + 1) % _cameras.length;
-    setState(() => _initializing = true);
+    setState(() {
+      _initializing = true;
+      _faceGeo = [];
+    });
     await _initCamera(_cameraIndex);
   }
 
@@ -263,6 +342,232 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
         _look = LiveLooks.all.first;
       }
     });
+  }
+
+  // ---------------------------------------------------------------
+  // Zoom (camera upgrade round, item 1)
+  // ---------------------------------------------------------------
+
+  /// Applies a zoom level, clamped to what THIS camera reports.
+  /// Calls are coalesced: pinch gestures fire faster than the
+  /// platform channel answers, so only the latest value matters.
+  /// Works mid-recording — CameraX applies zoom to the live
+  /// preview and the recording alike.
+  Future<void> _setZoom(double z) async {
+    _pendingZoom = z.clamp(_minZoom, _maxZoom).toDouble();
+    if (_zoomInFlight) return;
+    _zoomInFlight = true;
+    while (_pendingZoom != null) {
+      final target = _pendingZoom!;
+      _pendingZoom = null;
+      final c = _controller;
+      if (c == null || !c.value.isInitialized) break;
+      try {
+        await c.setZoomLevel(target);
+      } catch (e) {
+        debugPrint('setZoomLevel failed: $e');
+        break;
+      }
+      if (!mounted) break;
+      setState(() {
+        _zoom = target;
+        _zoomLabelVisible = true;
+      });
+      _zoomLabelTimer?.cancel();
+      _zoomLabelTimer =
+          Timer(const Duration(milliseconds: 1400), () {
+        if (mounted) setState(() => _zoomLabelVisible = false);
+      });
+    }
+    _zoomInFlight = false;
+  }
+
+  void _stepZoom(double delta) => _setZoom(_zoom + delta);
+
+  // ---------------------------------------------------------------
+  // Face detection (camera upgrade round, item 3)
+  // ---------------------------------------------------------------
+
+  void _selectFaceSticker(FaceStickerKind? kind) {
+    setState(() {
+      _faceKind = kind;
+      _strip = _Strip.face;
+      if (kind == null) _faceGeo = [];
+    });
+    if (kind == null) {
+      _stopFaceStream();
+    } else {
+      _startFaceStream();
+    }
+  }
+
+  Future<void> _startFaceStream() async {
+    final c = _controller;
+    if (c == null || !c.value.isInitialized || _streaming) return;
+    try {
+      await c.startImageStream(_onCameraFrame);
+      _streaming = true;
+    } catch (e) {
+      debugPrint('face stream start failed: $e');
+    }
+  }
+
+  Future<void> _stopFaceStream() async {
+    final c = _controller;
+    if (c == null || !_streaming) return;
+    _streaming = false;
+    try {
+      await c.stopImageStream();
+    } catch (e) {
+      debugPrint('face stream stop failed: $e');
+    }
+  }
+
+  /// Throttled frame handler: at most one detection in flight and
+  /// one per ~130ms — plenty for a sticker that is baked in 0.5s
+  /// segments, and gentle on the phone.
+  void _onCameraFrame(CameraImage image) {
+    if (_detectBusy) return;
+    final now = DateTime.now();
+    if (now.difference(_lastDetect).inMilliseconds < 130) return;
+    _lastDetect = now;
+    _detectBusy = true;
+    _detectFaces(image).whenComplete(() => _detectBusy = false);
+  }
+
+  Future<void> _detectFaces(CameraImage image) async {
+    if (_faceKind == null) return;
+    final input = _toInputImage(image);
+    if (input == null) return;
+    List<Face> faces;
+    try {
+      faces = await _faceDetector.processImage(input);
+    } catch (e) {
+      debugPrint('face detection failed: $e');
+      return;
+    }
+    final geo = faces.map(_geometryOf).toList();
+    if (!mounted) return;
+    setState(() => _faceGeo = geo);
+    if (_recording && geo.isNotEmpty) {
+      // Log the primary (largest) face — the bake follows it.
+      final primary = geo.reduce((a, b) =>
+          a.faceRect.width * a.faceRect.height >=
+                  b.faceRect.width * b.faceRect.height
+              ? a
+              : b);
+      _track.add(FaceTrackSample(
+          _recWatch.elapsedMilliseconds / 1000.0, primary));
+    }
+  }
+
+  FaceGeometry _geometryOf(Face face) {
+    Offset? pt(FaceLandmarkType type) {
+      final p = face.landmarks[type]?.position;
+      return p == null ? null : Offset(p.x.toDouble(), p.y.toDouble());
+    }
+
+    return FaceGeometry(
+      faceRect: face.boundingBox,
+      leftEye: pt(FaceLandmarkType.leftEye),
+      rightEye: pt(FaceLandmarkType.rightEye),
+    );
+  }
+
+  /// Converts a camera frame into an ML Kit input with the
+  /// correct rotation for the current device orientation, and
+  /// records the UPRIGHT frame size (the coordinate space ML Kit
+  /// reports faces in).
+  InputImage? _toInputImage(CameraImage image) {
+    final c = _controller;
+    if (c == null || _cameras.isEmpty) return null;
+    final camera = _cameras[_cameraIndex];
+    final rotation = _inputRotation(camera, c.value.deviceOrientation);
+    if (rotation == null) return null;
+    final rawFormat = InputImageFormatValue.fromRawValue(image.format.raw);
+    final Uint8List bytes;
+    final int bytesPerRow;
+    final InputImageFormat format;
+    if (image.format.group == ImageFormatGroup.yuv420) {
+      // The camera plugin delivers YUV_420_888 on Android; ML Kit
+      // wants NV21 bytes there.
+      bytes = _yuv420ToNv21(image);
+      bytesPerRow = image.width;
+      format = InputImageFormat.nv21;
+    } else if (rawFormat == InputImageFormat.nv21 ||
+        rawFormat == InputImageFormat.bgra8888) {
+      bytes = image.planes[0].bytes;
+      bytesPerRow = image.planes[0].bytesPerRow;
+      format = rawFormat!;
+    } else {
+      return null;
+    }
+    _uprightSize =
+        (rotation == InputImageRotation.rotation90deg ||
+                rotation == InputImageRotation.rotation270deg)
+            ? Size(image.height.toDouble(), image.width.toDouble())
+            : Size(image.width.toDouble(), image.height.toDouble());
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: bytesPerRow,
+      ),
+    );
+  }
+
+  InputImageRotation? _inputRotation(
+      CameraDescription camera, DeviceOrientation orientation) {
+    const compensation = {
+      DeviceOrientation.portraitUp: 0,
+      DeviceOrientation.landscapeLeft: 90,
+      DeviceOrientation.portraitDown: 180,
+      DeviceOrientation.landscapeRight: 270,
+    };
+    final comp = compensation[orientation];
+    if (comp == null) return null;
+    final raw = camera.lensDirection == CameraLensDirection.front
+        ? (camera.sensorOrientation + comp) % 360
+        : (camera.sensorOrientation - comp + 360) % 360;
+    return InputImageRotationValue.fromRawValue(raw);
+  }
+
+  /// YUV_420_888 (three planes, possibly strided / semi-planar)
+  /// → NV21 (Y plane + interleaved VU), the layout ML Kit
+  /// requires for byte inputs on Android.
+  Uint8List _yuv420ToNv21(CameraImage image) {
+    final w = image.width;
+    final h = image.height;
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+    final out = Uint8List(w * h * 3 ~/ 2);
+    final yPixel = yPlane.bytesPerPixel ?? 1;
+    if (yPixel == 1) {
+      for (var row = 0; row < h; row++) {
+        out.setRange(
+            row * w, row * w + w, yPlane.bytes, row * yPlane.bytesPerRow);
+      }
+    } else {
+      var i = 0;
+      for (var row = 0; row < h; row++) {
+        for (var col = 0; col < w; col++) {
+          out[i++] = yPlane.bytes[row * yPlane.bytesPerRow + col * yPixel];
+        }
+      }
+    }
+    final uPixel = uPlane.bytesPerPixel ?? 1;
+    final vPixel = vPlane.bytesPerPixel ?? 1;
+    var i = w * h;
+    for (var row = 0; row < h ~/ 2; row++) {
+      for (var col = 0; col < w ~/ 2; col++) {
+        out[i++] = vPlane.bytes[row * vPlane.bytesPerRow + col * vPixel];
+        out[i++] = uPlane.bytes[row * uPlane.bytesPerRow + col * uPixel];
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------
@@ -367,26 +672,49 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   Future<void> _startRecording() async {
     final c = _controller;
     if (c == null || !c.value.isInitialized || _recording) return;
+    var started = false;
     try {
       await c.startVideoRecording();
-      // The picked sound performs along with the recording.
-      final sp = _soundPlayer;
-      if (sp != null) {
-        await sp.seekTo(Duration.zero);
-        await sp.play();
-      }
-      _timer?.cancel();
-      _elapsed = 0;
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        setState(() => _elapsed++);
-        if (_elapsed >= _durationLimit) _stop();
-      });
-      setState(() => _recording = true);
+      started = true;
     } on CameraException catch (e) {
       debugPrint('start recording failed: ${e.code}');
-      _showError('Recording could not start. Please try again.');
+      if (_streaming) {
+        // Some devices refuse to record while the face-detection
+        // image stream is bound. Drop the stream and retry once;
+        // the face overlay then holds its last position and the
+        // bake holds the last logged face for the rest of the clip.
+        await _stopFaceStream();
+        try {
+          await c.startVideoRecording();
+          started = true;
+        } on CameraException catch (e2) {
+          debugPrint('start recording retry failed: ${e2.code}');
+        }
+      }
     }
+    if (!started) {
+      _showError('Recording could not start. Please try again.');
+      return;
+    }
+    // Face-track logging starts with the recording (item 3).
+    _track = [];
+    _recWatch
+      ..reset()
+      ..start();
+    // The picked sound performs along with the recording.
+    final sp = _soundPlayer;
+    if (sp != null) {
+      await sp.seekTo(Duration.zero);
+      await sp.play();
+    }
+    _timer?.cancel();
+    _elapsed = 0;
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _elapsed++);
+      if (_elapsed >= _durationLimit) _stop();
+    });
+    setState(() => _recording = true);
   }
 
   Future<void> _stop() async {
@@ -395,6 +723,18 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     _timer?.cancel();
     setState(() => _recording = false);
     await _soundPlayer?.pause();
+    _recWatch.stop();
+    // The face track rides along only when a sticker was selected
+    // AND at least one face was actually logged — never faked.
+    final track = (_faceKind != null &&
+            _track.isNotEmpty &&
+            _uprightSize != null)
+        ? FaceTrackData(
+            recordedKind: _faceKind!,
+            imageSize: _uprightSize!,
+            samples: List.of(_track),
+          )
+        : null;
     try {
       final file = await c.stopVideoRecording();
       if (!mounted) return;
@@ -409,6 +749,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
             initialSoundPath: _soundFile?.path,
             initialSoundSourceVideoId: _soundSourceVideoId,
             initialSoundOwnerId: _soundOwnerId,
+            faceTrack: track,
             onPosted: widget.onPosted,
           ),
         ),
@@ -465,9 +806,16 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                 if (_initializing || c == null)
                   const Center(child: CircularProgressIndicator())
                 else
-                  // Double-tap switches front/back camera (item 1).
+                  // Double-tap switches front/back camera (item 1);
+                  // pinch zooms (camera upgrade round, item 1).
                   GestureDetector(
                     onDoubleTap: _flip,
+                    onScaleStart: (d) => _baseZoom = _zoom,
+                    onScaleUpdate: (d) {
+                      if (d.pointerCount >= 2) {
+                        _setZoom(_baseZoom * d.scale);
+                      }
+                    },
                     child: _livePreview(c),
                   ),
                 // Elapsed / limit chip
@@ -572,12 +920,36 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                       const SizedBox(height: 10),
                       _stripToggle(),
                       const SizedBox(height: 10),
-                      _strip == _Strip.looks ? _looksRow() : _effectsRow(),
+                      switch (_strip) {
+                        _Strip.looks => _looksRow(),
+                        _Strip.effects => _effectsRow(),
+                        _Strip.face => _faceRow(),
+                      },
                       const SizedBox(height: 12),
+                      if (_zoomLabelVisible)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${_zoom.toStringAsFixed(1)}×',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          const SizedBox(width: 56),
+                          _zoomStepper(Icons.remove, () => _stepZoom(-0.5)),
                           GestureDetector(
                             onTap: _toggleRecord,
                             child: Container(
@@ -607,7 +979,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(width: 56),
+                          _zoomStepper(Icons.add, () => _stepZoom(0.5)),
                         ],
                       ),
                     ],
@@ -615,6 +987,24 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                 ),
               ],
             ),
+    );
+  }
+
+  /// Zoom stepper flanking the record button (camera upgrade
+  /// round, item 1): tap = ±0.5×, clamped to the camera's range.
+  Widget _zoomStepper(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.black45,
+          border: Border.all(color: Colors.white30),
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
     );
   }
 
@@ -802,6 +1192,24 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
         fit: StackFit.expand,
         children: [
           preview,
+          // Face sticker overlay (camera upgrade round, item 3):
+          // drawn from the latest ML Kit faces, on top of the
+          // filtered preview, UNDER the letterbox/frame overlays.
+          // It stays up while recording — the preview stack is
+          // never torn down when recording starts (item 2).
+          if (_faceKind != null &&
+              _faceGeo.isNotEmpty &&
+              _uprightSize != null)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _FaceOverlayPainter(
+                  faces: _faceGeo,
+                  imageSize: _uprightSize!,
+                  kind: _faceKind!,
+                  mirrored: !_isBackCamera,
+                ),
+              ),
+            ),
           if (_effect.name == 'Cinematic') ...[
             Positioned(
               top: 0,
@@ -865,6 +1273,8 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
         tab('Looks', _Strip.looks),
         const SizedBox(width: 8),
         tab('Effects', _Strip.effects),
+        const SizedBox(width: 8),
+        tab('Face', _Strip.face),
       ],
     );
   }
@@ -1047,4 +1457,126 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       ),
     );
   }
+
+  /// Face strip (camera upgrade round, item 3): "None" plus the
+  /// real face-following stickers. Selecting one starts on-device
+  /// face detection; the sticker follows the face LIVE and is
+  /// baked into the posted video at the logged positions.
+  Widget _faceRow() {
+    Widget tile({
+      required String emoji,
+      required String name,
+      required bool selected,
+      required VoidCallback onTap,
+    }) {
+      return GestureDetector(
+        onTap: _recording ? null : onTap,
+        child: SizedBox(
+          width: 54,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.black45,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: selected ? AppTheme.accent : Colors.white38,
+                    width: selected ? 2.5 : 1,
+                  ),
+                ),
+                child: Center(
+                  child: Text(emoji, style: const TextStyle(fontSize: 22)),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: selected ? Colors.white : Colors.white70,
+                  fontWeight:
+                      selected ? FontWeight.w700 : FontWeight.w400,
+                  shadows: const [
+                    Shadow(color: Colors.black54, blurRadius: 3),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 78,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          tile(
+            emoji: '🚫',
+            name: 'None',
+            selected: _faceKind == null,
+            onTap: () => _selectFaceSticker(null),
+          ),
+          const SizedBox(width: 10),
+          for (final s in FaceStickers.all) ...[
+            tile(
+              emoji: s.emoji,
+              name: s.name,
+              selected: _faceKind == s.kind,
+              onTap: () => _selectFaceSticker(s.kind),
+            ),
+            const SizedBox(width: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Paints the selected face sticker over every detected face.
+/// Coordinates arrive in UPRIGHT image space and are mapped onto
+/// the (cover-fit, full-screen) canvas with the same centred
+/// cover math the camera preview uses; the front camera's
+/// mirrored preview flips X.
+class _FaceOverlayPainter extends CustomPainter {
+  final List<FaceGeometry> faces;
+  final Size imageSize;
+  final FaceStickerKind kind;
+  final bool mirrored;
+
+  const _FaceOverlayPainter({
+    required this.faces,
+    required this.imageSize,
+    required this.kind,
+    required this.mirrored,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (imageSize.width <= 0 || imageSize.height <= 0) return;
+    final scale = math.max(
+        size.width / imageSize.width, size.height / imageSize.height);
+    final dx = (size.width - imageSize.width * scale) / 2;
+    final dy = (size.height - imageSize.height * scale) / 2;
+    for (final face in faces) {
+      final r = stickerRectFor(kind, face);
+      final left = mirrored
+          ? size.width - (r.right * scale + dx)
+          : r.left * scale + dx;
+      final screenRect = Rect.fromLTWH(
+          left, r.top * scale + dy, r.width * scale, r.height * scale);
+      paintFaceSticker(canvas, screenRect, kind);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_FaceOverlayPainter oldDelegate) => true;
 }

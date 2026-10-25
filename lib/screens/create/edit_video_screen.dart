@@ -4,6 +4,7 @@ import 'package:video_player/video_player.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/auth_service.dart';
+import 'package:vibeshort/services/face_effects.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/services/storage_service.dart';
 import 'package:vibeshort/services/video_edit_service.dart';
@@ -43,6 +44,12 @@ class EditVideoScreen extends StatefulWidget {
   final String? initialSoundSourceVideoId;
   final String? initialSoundOwnerId;
 
+  /// Face track logged on the record screen (camera upgrade
+  /// round): present only when the clip was recorded in-app with
+  /// a face sticker selected and at least one face was detected.
+  /// The chosen sticker is baked over the face on post.
+  final FaceTrackData? faceTrack;
+
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
 
@@ -56,6 +63,7 @@ class EditVideoScreen extends StatefulWidget {
     this.initialSoundPath,
     this.initialSoundSourceVideoId,
     this.initialSoundOwnerId,
+    this.faceTrack,
     this.onPosted,
   });
 
@@ -85,6 +93,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   String? _soundOwnerId;
   OverlayPosition _textPos = OverlayPosition.bottom;
 
+  /// Face sticker to bake (camera upgrade round): starts as the
+  /// sticker recorded with; the user may switch it (the logged
+  /// face geometry is sticker-agnostic) or remove it entirely.
+  FaceStickerKind? _faceKind;
+
   // Trim window in seconds (start 0, end = full duration = untrimmed).
   double _trimStartSec = 0;
   double _trimEndSec = 0;
@@ -111,6 +124,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         orElse: () => VideoEffects.none,
       );
     }
+    _faceKind = widget.faceTrack?.recordedKind;
     // A built-in sound picked before recording rides in as the
     // music track: replace mode with its cache file as the source.
     if (widget.initialSoundPath != null) {
@@ -179,6 +193,9 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
             : Duration.zero,
         trimEnd: _trimActive && _trimEndSec < _durationSec - 0.05
             ? Duration(milliseconds: (_trimEndSec * 1000).round())
+            : null,
+        faceBake: (_faceKind != null && widget.faceTrack != null)
+            ? FaceBakeData(kind: _faceKind!, track: widget.faceTrack!)
             : null,
       );
 
@@ -296,6 +313,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           options: _options,
           videoDuration: player.value.duration,
           videoHeight: player.value.size.height.round(),
+          videoWidth: player.value.size.width.round(),
         );
       }
     } catch (e) {
@@ -415,6 +433,17 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                     style: TextStyle(color: AppTheme.muted, fontSize: 12)),
                 const SizedBox(height: 8),
                 _effectsRow(),
+                if (widget.faceTrack != null) ...[
+                  const SizedBox(height: 16),
+                  _sectionLabel('Face effect'),
+                  const SizedBox(height: 2),
+                  const Text(
+                      'Tracked on your face while recording — the '
+                      'sticker is baked into the video when you post.',
+                      style: TextStyle(color: AppTheme.muted, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  _faceRow(),
+                ],
                 const SizedBox(height: 16),
                 _sectionLabel('Music'),
                 const SizedBox(height: 8),
@@ -762,6 +791,81 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// Face sticker picker (camera upgrade round): switch the
+  /// recorded sticker or drop it. Only shown when the clip
+  /// carries a real face track from the record screen.
+  Widget _faceRow() {
+    Widget tile({
+      required String emoji,
+      required String name,
+      required bool selected,
+      required VoidCallback onTap,
+    }) {
+      return GestureDetector(
+        onTap: _posting ? null : onTap,
+        child: SizedBox(
+          width: 62,
+          child: Column(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppTheme.card,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color:
+                        selected ? AppTheme.accent : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: Text(emoji, style: const TextStyle(fontSize: 26)),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: selected ? Colors.white : AppTheme.muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 88,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          tile(
+            emoji: '🚫',
+            name: 'None',
+            selected: _faceKind == null,
+            onTap: () => setState(() => _faceKind = null),
+          ),
+          const SizedBox(width: 10),
+          for (final s in FaceStickers.all) ...[
+            tile(
+              emoji: s.emoji,
+              name: s.name,
+              selected: _faceKind == s.kind,
+              onTap: () => setState(() => _faceKind = s.kind),
+            ),
+            const SizedBox(width: 10),
+          ],
+        ],
       ),
     );
   }
