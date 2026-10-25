@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/screens/create/edit_video_screen.dart';
@@ -48,6 +49,16 @@ import 'package:vibeshort/widgets/sounds_sheet.dart';
 ///    case is bound), and without the lock auto-exposure
 ///    reconverges under the recorder's frame-rate limits and the
 ///    picture visibly darkens in low light.
+///  * Fix round 3 (hold-to-record): the record button now takes
+///    raw pointer events. A quick TAP keeps the old behaviour
+///    (tap to start, tap to stop; a tap still arms/cancels the
+///    self-timer countdown). PRESS AND HOLD starts recording
+///    after a short threshold; while holding, sliding the SAME
+///    finger up zooms in / down zooms out (smooth exponential
+///    mapping into the same coalesced setZoomLevel path);
+///    RELEASING the finger stops the recording and finalizes it
+///    exactly like a normal stop (edit screen, 15s/60s cap still
+///    enforced by the elapsed timer).
 class CameraRecordScreen extends StatefulWidget {
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
@@ -88,6 +99,34 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   Timer? _countTimer;
 
   bool _flashOn = false;
+
+  // -------------------------------------------------------------
+  // Fix round 3: hold-to-record with slide-zoom (Snapchat model)
+  // -------------------------------------------------------------
+
+  /// Finger currently down on the record button.
+  bool _btnPressing = false;
+
+  /// The current recording was started by a hold (release stops).
+  bool _holdMode = false;
+
+  /// A hold-start is still inside [_startRecording]; if the
+  /// finger lifts before it lands, stop as soon as it starts.
+  bool _pendingHoldStop = false;
+
+  /// Reentrancy guard for [_startRecording] (hold timer + tap can
+  /// otherwise race a double start).
+  bool _startingRecording = false;
+
+  Timer? _holdDelayTimer;
+  double? _pressStartY;
+  double _pressStartZoom = 1.0;
+  bool _holdZoomActive = false;
+
+  /// First-run hint under the record button; hidden forever once
+  /// the user has completed one hold-recording.
+  bool _holdHintSeen = true; // until prefs load; avoids a flash
+  static const String _kHoldHintSeen = 'vibeshort_hold_hint_seen';
 
   // -------------------------------------------------------------
   // Camera upgrade round: zoom + face effects
@@ -185,6 +224,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _setup();
+    _loadHoldHint();
     final pre = widget.initialSound;
     if (pre != null) _applyPreselectedSound(pre);
   }
@@ -223,6 +263,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _countTimer?.cancel();
+    _holdDelayTimer?.cancel();
     _zoomLabelTimer?.cancel();
     _holdTimer?.cancel();
     _stopFaceStream();
@@ -799,6 +840,110 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     await _startRecording();
   }
 
+  // ---------------------------------------------------------------
+  // Fix round 3: hold-to-record pointer handling (Snapchat model)
+  // ---------------------------------------------------------------
+
+  Future<void> _loadHoldHint() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(
+          () => _holdHintSeen = p.getBool(_kHoldHintSeen) ?? false);
+    } catch (_) {
+      if (mounted) setState(() => _holdHintSeen = false);
+    }
+  }
+
+  Future<void> _dismissHoldHint() async {
+    if (_holdHintSeen) return;
+    setState(() => _holdHintSeen = true);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_kHoldHintSeen, true);
+    } catch (_) {}
+  }
+
+  /// Press threshold after which a press counts as a HOLD.
+  static const Duration _holdThreshold = Duration(milliseconds: 220);
+
+  void _onRecordPointerDown(PointerDownEvent e) {
+    if (_initializing || _controller == null || _error != null) return;
+    _btnPressing = true;
+    _pressStartY = e.position.dy;
+    _pressStartZoom = _zoom;
+    _holdZoomActive = false;
+    if (mounted) setState(() {}); // press-scale feedback
+    if (_recording || _countdown != null) {
+      // Stopping (or countdown-cancel) is decided on release, so
+      // a tap on a running recording keeps its old meaning and
+      // no hold timer is armed over it.
+      return;
+    }
+    _holdDelayTimer?.cancel();
+    _holdDelayTimer = Timer(_holdThreshold, () {
+      if (!_btnPressing || _recording || !mounted) return;
+      _holdMode = true;
+      // Same entry point as a tap: a self-timer, if armed, still
+      // runs its countdown first; the recording itself then runs
+      // in tap semantics (the finger is already gone by design
+      // of that flow is impossible — a running countdown simply
+      // isn't a hold-recording).
+      _toggleRecord();
+    });
+  }
+
+  void _onRecordPointerMove(PointerMoveEvent e) {
+    if (!_btnPressing) return;
+    final startY = _pressStartY;
+    if (startY == null) return;
+    // Up = positive. A few px of slop before zoom engages so a
+    // steady hold doesn't drift the zoom.
+    final dy = startY - e.position.dy;
+    if (dy.abs() > 10) _holdZoomActive = true;
+    if (_holdZoomActive) {
+      _setZoom(_pressStartZoom * math.exp(dy / 240.0));
+    }
+  }
+
+  Future<void> _onRecordPointerUp(PointerUpEvent e) async {
+    final wasPressing = _btnPressing;
+    _btnPressing = false;
+    _pressStartY = null;
+    _holdDelayTimer?.cancel();
+    if (mounted) setState(() {}); // release press-scale feedback
+    if (!wasPressing) return;
+    if (_holdMode) {
+      _holdMode = false;
+      _dismissHoldHint();
+      if (_recording) {
+        await _stop();
+      } else if (_startingRecording) {
+        // The hold-start hasn't landed yet; stop the moment it
+        // does (handled at the end of _startRecording).
+        _pendingHoldStop = true;
+      }
+      return;
+    }
+    // Quick tap: exactly the old toggle behaviour.
+    _toggleRecord();
+  }
+
+  void _onRecordPointerCancel(PointerCancelEvent e) {
+    _btnPressing = false;
+    _pressStartY = null;
+    _holdDelayTimer?.cancel();
+    if (_holdMode) {
+      _holdMode = false;
+      if (_recording) {
+        _stop();
+      } else if (_startingRecording) {
+        _pendingHoldStop = true;
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
   /// Releases the record-time exposure lock (fix round 2).
   Future<void> _unlockExposure() async {
     if (!_exposureLocked) return;
@@ -815,6 +960,10 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   Future<void> _startRecording() async {
     final c = _controller;
     if (c == null || !c.value.isInitialized || _recording) return;
+    // Fix round 3: a hold timer and a tap release can both reach
+    // here within the same press — only one start may run.
+    if (_startingRecording) return;
+    _startingRecording = true;
 
     // --- Fix round 2: carry the preview's exposure across the
     // record-start transition. Binding the video use case makes
@@ -868,6 +1017,8 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       }
     }
     if (!started) {
+      _startingRecording = false;
+      _pendingHoldStop = false;
       await _unlockExposure();
       if (wantFaceFrames) _startFaceStream();
       _showError('Recording could not start. Please try again.');
@@ -920,6 +1071,13 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       if (_elapsed >= _durationLimit) _stop();
     });
     setState(() => _recording = true);
+    _startingRecording = false;
+    // Fix round 3: a hold whose finger lifted while this start
+    // was still in flight stops immediately.
+    if (_pendingHoldStop) {
+      _pendingHoldStop = false;
+      _stop();
+    }
   }
 
   Future<void> _stop() async {
@@ -1171,45 +1329,78 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                             ),
                           ),
                         ),
-                      // Record button alone (fix round 2): the
-                      // - / + zoom steppers are gone — zoom is
-                      // gestures only (pinch / vertical drag on
-                      // the preview). The zoom label above stays
-                      // transient: it fades out on its own.
+                      // Record button (fix round 2: the - / +
+                      // zoom steppers are gone — zoom is gestures
+                      // only). Fix round 3: the button takes RAW
+                      // pointer events instead of onTap, so it can
+                      // tell a quick tap (old toggle behaviour)
+                      // from a press-and-hold: hold starts the
+                      // recording, sliding the held finger up /
+                      // down zooms, and releasing stops. The
+                      // preview's own pinch / drag-zoom sits UNDER
+                      // this button in the stack and never sees
+                      // presses that start here.
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          GestureDetector(
-                            onTap: _toggleRecord,
-                            child: Container(
-                              width: 76,
-                              height: 76,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                    color: Colors.white, width: 4),
-                              ),
-                              child: Center(
-                                child: Container(
-                                  width: _recording ? 30 : 58,
-                                  height: _recording ? 30 : 58,
-                                  decoration: _recording
-                                      ? BoxDecoration(
-                                          color: AppTheme.accent2,
-                                          borderRadius:
-                                              BorderRadius.circular(6),
-                                        )
-                                      : const BoxDecoration(
-                                          gradient:
-                                              AppTheme.primaryGradient,
-                                          shape: BoxShape.circle,
-                                        ),
+                          Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerDown: _onRecordPointerDown,
+                            onPointerMove: _onRecordPointerMove,
+                            onPointerUp: _onRecordPointerUp,
+                            onPointerCancel: _onRecordPointerCancel,
+                            child: AnimatedScale(
+                              scale: _btnPressing ? 1.07 : 1.0,
+                              duration:
+                                  const Duration(milliseconds: 120),
+                              child: Container(
+                                width: 76,
+                                height: 76,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                      color: Colors.white, width: 4),
+                                ),
+                                child: Center(
+                                  child: Container(
+                                    width: _recording ? 30 : 58,
+                                    height: _recording ? 30 : 58,
+                                    decoration: _recording
+                                        ? BoxDecoration(
+                                            color: AppTheme.accent2,
+                                            borderRadius:
+                                                BorderRadius.circular(6),
+                                          )
+                                        : const BoxDecoration(
+                                            gradient:
+                                                AppTheme.primaryGradient,
+                                            shape: BoxShape.circle,
+                                          ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ],
                       ),
+                      // First-run hint (fix round 3): shown until
+                      // the user completes one hold-recording.
+                      if (!_recording && !_holdHintSeen)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 10),
+                          child: Text(
+                            'Hold to record · slide to zoom',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              shadows: [
+                                Shadow(
+                                    color: Colors.black54, blurRadius: 4),
+                              ],
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),

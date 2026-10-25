@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,10 +11,31 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// [authResolved] — the first real auth-state event — before routing,
 /// so a signed-in user is NEVER dropped on the login screen at cold
 /// start (this was the "login every time" bug in the previous app).
+///
+/// Fix round 3 hardened this further, after "login every time I
+/// close the app from Recents" was reported on the shipped build:
+///  * The app now runs under a REGISTERED ANDROID appId (see
+///    main.dart) — the web appId left the native session store
+///    without a proper Android app identity to key on.
+///  * A session marker (uid) is kept in SharedPreferences. When a
+///    marker exists but the first auth event says "signed out",
+///    the gate does NOT route to login immediately: it enters a
+///    restore window ([restoringSession]) and keeps listening —
+///    native restore can lag on slow devices, and a Firestore
+///    profile fetch is never part of the gate at all, so a near-
+///    zero-bandwidth connection cannot bounce a signed-in user
+///    to the login screen. Only an EXPLICIT sign-out (Log out /
+///    Switch account / Delete account) clears the marker, and
+///    only then does a null event resolve instantly.
 class AuthService extends ChangeNotifier {
   AuthService._();
 
   static final AuthService instance = AuthService._();
+
+  /// Session-marker keys (fix round 3). The marker records only
+  /// THAT a session existed and its uid — never a credential.
+  static const String _kSessionUid = 'vibeshort_session_uid';
+  static const String _kExplicitOut = 'vibeshort_explicit_signout';
 
   /// Set by main() after the Firebase.initializeApp() attempt.
   static bool firebaseReady = false;
@@ -30,6 +53,15 @@ class AuthService extends ChangeNotifier {
   /// persisted user — or null when genuinely signed out).
   bool _authResolved = false;
   bool get authResolved => _authResolved;
+
+  /// Fix round 3: a session marker existed at startup but the
+  /// first auth event reported signed-out, so the gate is holding
+  /// in the restore window instead of bouncing to login. The
+  /// splash shows a "restoring session" cue while this is true.
+  bool _restoringSession = false;
+  bool get restoringSession => _restoringSession;
+  Timer? _restoreTimer;
+  bool _hadSessionMarker = false;
 
   FirebaseAuth get _authSafe {
     _auth ??= FirebaseAuth.instance;
@@ -67,23 +99,117 @@ class AuthService extends ChangeNotifier {
       _authResolved = true;
       return;
     }
+    // Fix round 3: read the session marker BEFORE subscribing, so
+    // the very first null event can be judged against it.
+    try {
+      final p = await SharedPreferences.getInstance();
+      _hadSessionMarker = p.getString(_kSessionUid) != null &&
+          p.getBool(_kExplicitOut) != true;
+    } catch (_) {
+      _hadSessionMarker = false;
+    }
     try {
       // Fast path only: a non-null currentUser is a definite
       // signed-in session. A null here proves NOTHING at cold
       // start (native restore may still be in flight), so in that
       // case only the first stream event resolves the state.
       _user = _authSafe.currentUser;
-      if (_user != null) _authResolved = true;
-      _authSafe.authStateChanges().listen((u) {
-        _user = u;
+      if (_user != null) {
         _authResolved = true;
-        notifyListeners();
-      });
+        _markSession(_user!.uid);
+      }
+      // Both streams are listened to: userChanges also fires for
+      // token/profile restores that authStateChanges can lag on.
+      _authSafe.authStateChanges().listen(_onAuthEvent);
+      _authSafe.userChanges().listen(_onAuthEvent);
       notifyListeners();
     } catch (e) {
       debugPrint('AuthService.init failed: $e');
       _authResolved = true;
     }
+  }
+
+  /// Single handler for auth-state events (fix round 3).
+  ///
+  /// A non-null user is definitive: signed in, marker written,
+  /// gate resolved. A null user is definitive ONLY when there is
+  /// no session marker (never signed in, or an explicit sign-out
+  /// already cleared it) — with a marker, the native restore may
+  /// simply be lagging after process death, so the gate holds in
+  /// the restore window for up to 12 s (re-checking currentUser
+  /// once mid-window) before it accepts "signed out".
+  void _onAuthEvent(User? u) {
+    if (u != null) {
+      final wasRestoring = _restoringSession;
+      _user = u;
+      _restoringSession = false;
+      _restoreTimer?.cancel();
+      _authResolved = true;
+      _markSession(u.uid);
+      if (wasRestoring) {
+        debugPrint('AuthService: session restored after null event');
+      }
+      notifyListeners();
+      return;
+    }
+    _user = null;
+    if (!_hadSessionMarker || _authResolved) {
+      _authResolved = true;
+      notifyListeners();
+      return;
+    }
+    // Marker present + first null: hold, don't bounce.
+    if (!_restoringSession) {
+      _restoringSession = true;
+      debugPrint('AuthService: null event with session marker — '
+          'holding in restore window');
+      // Mid-window re-check: on some devices currentUser lands
+      // before any further stream event fires.
+      Timer(const Duration(seconds: 3), () {
+        final cu = _authSafe.currentUser;
+        if (cu != null) _onAuthEvent(cu);
+      });
+      _restoreTimer = Timer(const Duration(seconds: 12), () {
+        if (!_restoringSession) return;
+        _restoringSession = false;
+        // The native session is genuinely gone. Drop the stale
+        // marker so the NEXT cold start resolves instantly, and
+        // let the gate route to login this once — the sign-in
+        // that follows re-persists under the fixed app identity.
+        _hadSessionMarker = false;
+        _markSession(null);
+        _authResolved = true;
+        notifyListeners();
+      });
+      notifyListeners();
+    }
+  }
+
+  /// Writes/clears the fix-round-3 session marker. Fire-and-forget:
+  /// a prefs failure must never break an auth flow.
+  Future<void> _markSession(String? uid) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (uid == null) {
+        await p.remove(_kSessionUid);
+      } else {
+        await p.setString(_kSessionUid, uid);
+        await p.setBool(_kExplicitOut, false);
+      }
+    } catch (_) {}
+  }
+
+  /// Marks an EXPLICIT sign-out (the only paths that may clear
+  /// the session marker): Log out, Switch account, Delete account.
+  Future<void> _markExplicitSignOut() async {
+    _hadSessionMarker = false;
+    _restoringSession = false;
+    _restoreTimer?.cancel();
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_kSessionUid);
+      await p.setBool(_kExplicitOut, true);
+    } catch (_) {}
   }
 
   /// Creates the account and returns the new user's uid. Profile
@@ -98,7 +224,9 @@ class AuthService extends ChangeNotifier {
         password: pw,
       );
       _user = cred.user;
+      _hadSessionMarker = true;
       await _cacheEmail(email.trim());
+      await _markSession(cred.user!.uid);
       notifyListeners();
       return cred.user!.uid;
     } on FirebaseAuthException catch (e) {
@@ -115,7 +243,9 @@ class AuthService extends ChangeNotifier {
         password: pw,
       );
       _user = cred.user;
+      _hadSessionMarker = true;
       await _cacheEmail(email.trim());
+      await _markSession(cred.user!.uid);
       notifyListeners();
     } on FirebaseAuthException catch (e) {
       throw Exception(_friendly(e));
@@ -234,11 +364,13 @@ class AuthService extends ChangeNotifier {
       throw Exception(_friendly(e));
     }
     _user = null;
+    await _markExplicitSignOut();
     notifyListeners();
   }
 
   /// The ONLY sign-out path in the app (explicit Log out button).
   Future<void> signOut() async {
+    await _markExplicitSignOut();
     if (!firebaseReady) {
       _user = null;
       notifyListeners();

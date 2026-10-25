@@ -60,7 +60,9 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     // Watched only so the "restoring session" spinner clears.
-    final resolved = context.watch<AuthService>().authResolved;
+    final auth = context.watch<AuthService>();
+    final resolved = auth.authResolved;
+    final restoring = auth.restoringSession;
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: Center(
@@ -114,6 +116,16 @@ class _SplashScreenState extends State<SplashScreen> {
                   color: AppTheme.accent,
                 ),
               ),
+            // Fix round 3: a previous session exists but the
+            // native restore is lagging — say so instead of
+            // silently dropping the user on the login screen.
+            if (restoring) ...[
+              const SizedBox(height: 14),
+              const Text(
+                'Restoring your session…',
+                style: TextStyle(fontSize: 13, color: AppTheme.muted),
+              ),
+            ],
           ],
         ),
       ),

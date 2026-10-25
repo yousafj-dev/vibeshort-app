@@ -39,21 +39,26 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            Test build of VibeShort (short video app) — Camera
-            fix round 2. FIXED: the preview no longer goes dark
-            when you tap record — exposure is locked at the
-            preview's brightness for the whole recording and
-            released when you stop. CHANGED: zoom is gestures
-            only, Snapchat-style — pinch, or drag one finger up
-            to zoom in / down to zoom out, before and WHILE
-            recording (the - / + buttons are gone). FIXED +
-            EXPANDED: face stickers now keep tracking while you
-            record (frames ride the recording itself, with
-            contour/landmark anchoring and smoothing so they sit
-            properly on the face), and there are 10 of them:
-            Shades, Crown, Stars, Flowers, Dog, Cat, Bunny,
-            Stache, Cap, Halo — drawn live over your face and
-            baked into the posted video where you saw them.
+            Test build of VibeShort (short video app) — Fix
+            round 3. FIXED (login): closing the app from Recents
+            no longer logs you out — the app now runs under a
+            registered Android app identity (the native session
+            store needs one), the start-up gate restores a
+            lagging session instead of bouncing to login, and a
+            slow connection can no longer sign you out. You may
+            be asked to log in ONE last time after installing;
+            after that it should stick. NEW (record button):
+            press and HOLD to record Snapchat-style — slide the
+            held finger up to zoom in, down to zoom out, and
+            let go to stop. A quick tap still works the old way
+            (tap to start, tap to stop). Everything from fix
+            round 2 stays: the preview no longer goes dark when
+            you tap record (exposure is locked at the preview's
+            brightness), zoom is gestures only (the - / + buttons
+            are gone), and the 10 face stickers (Shades, Crown,
+            Stars, Flowers, Dog, Cat, Bunny, Stache, Cap, Halo)
+            keep tracking while you record and are baked into
+            the posted video where you saw them.
             Your filter/effect also stays visible on screen the
             whole time you record.
             Everything from before stays: TikTok-style sound
