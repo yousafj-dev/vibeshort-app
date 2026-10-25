@@ -40,16 +40,22 @@ jobs:
           name: VibeShort test APK #${{ github.run_number }}
           body: |
             Test build of VibeShort (short video app) — Camera
-            upgrade round. NEW: pinch-to-zoom on the camera
-            preview plus - / + zoom buttons beside the record
-            button (zoom works WHILE recording, up to whatever
-            your camera supports). NEW: a Face tab on the Record
-            screen with real face-tracking stickers (Shades,
-            Crown, Stars) — on-device face detection follows your
-            face live while you record, and the sticker is baked
-            into the posted video following your face, exactly
-            where you saw it. Your filter/effect also stays
-            visible on screen the whole time you record.
+            fix round 2. FIXED: the preview no longer goes dark
+            when you tap record — exposure is locked at the
+            preview's brightness for the whole recording and
+            released when you stop. CHANGED: zoom is gestures
+            only, Snapchat-style — pinch, or drag one finger up
+            to zoom in / down to zoom out, before and WHILE
+            recording (the - / + buttons are gone). FIXED +
+            EXPANDED: face stickers now keep tracking while you
+            record (frames ride the recording itself, with
+            contour/landmark anchoring and smoothing so they sit
+            properly on the face), and there are 10 of them:
+            Shades, Crown, Stars, Flowers, Dog, Cat, Bunny,
+            Stache, Cap, Halo — drawn live over your face and
+            baked into the posted video where you saw them.
+            Your filter/effect also stays visible on screen the
+            whole time you record.
             Everything from before stays: TikTok-style sound
             pages and "Use this sound", TikTok-style camera with
             30 live looks and post-applied structural effects,

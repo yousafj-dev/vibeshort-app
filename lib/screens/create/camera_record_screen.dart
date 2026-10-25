@@ -32,14 +32,22 @@ import 'package:vibeshort/widgets/sounds_sheet.dart';
 ///  * "Add sound" pill (item 6): pick a built-in royalty-free
 ///    track BEFORE recording; it plays while you record and is
 ///    mixed into the posted video automatically.
-///  * Camera upgrade round: pinch-to-zoom + - / + steppers by
-///    the record button (zoom applies live, also mid-recording),
-///    and a Face strip with REAL ML Kit face-tracking stickers —
+///  * Camera upgrade round + fix round 2: Snapchat-style zoom
+///    gestures only (pinch, or one-finger vertical drag — drag
+///    up to zoom in), applied live, also mid-recording; and a
+///    Face strip with REAL ML Kit face-tracking stickers —
 ///    drawn live over the face, logged while recording, and
 ///    baked into the posted video by the edit screen's FFmpeg
 ///    pass. The preview stack (filter matrix + overlays) is never
 ///    torn down when recording starts, so the chosen look stays
 ///    visible for the whole recording.
+///  * Fix round 2 (dark recording): exposure is LOCKED at the
+///    preview's converged values just before recording starts
+///    and released when it stops — the camera plugin reconfigures
+///    its session the moment recording begins (a new video use
+///    case is bound), and without the lock auto-exposure
+///    reconverges under the recorder's frame-rate limits and the
+///    picture visibly darkens in low light.
 class CameraRecordScreen extends StatefulWidget {
   /// Called after a successful post (shell switches to Home).
   final VoidCallback? onPosted;
@@ -85,9 +93,10 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   // Camera upgrade round: zoom + face effects
   // -------------------------------------------------------------
 
-  /// Zoom state (item 1): bounds come from the device camera;
-  /// [_zoom] is applied LIVE via setZoomLevel, so pinch and the
-  /// +/- steppers work while recording too.
+  /// Zoom state (item 1; gestures only since fix round 2):
+  /// bounds come from the device camera; [_zoom] is applied LIVE
+  /// via setZoomLevel, so pinch and the vertical drag work while
+  /// recording too.
   double _zoom = 1.0;
   double _minZoom = 1.0;
   double _maxZoom = 1.0;
@@ -100,13 +109,24 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   /// Selected face sticker (item 3); null = no face effect.
   FaceStickerKind? _faceKind;
 
+  /// True while exposure is locked at the preview's values for a
+  /// recording (fix round 2 — see the class doc). Restored to
+  /// auto when the recording stops or fails to start.
+  bool _exposureLocked = false;
+
   /// On-device ML Kit detector (free, no API key, nothing leaves
-  /// the phone). Landmarks on for the eye-anchored stickers.
+  /// the phone). Landmarks AND contours on (fix round 2: the
+  /// face-oval contour anchors the head-top stickers, the nose /
+  /// mouth landmarks anchor the mustache and dog nose);
+  /// classification stays OFF — no sticker uses it and it only
+  /// slows detection down.
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
       enableLandmarks: true,
+      enableContours: true,
+      enableClassification: false,
       enableTracking: true,
-      minFaceSize: 0.12,
+      minFaceSize: 0.1,
       performanceMode: FaceDetectorMode.fast,
     ),
   );
@@ -114,9 +134,24 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   bool _detectBusy = false;
   DateTime _lastDetect = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// When frames last reached the handler / last contained a
+  /// face. The recording hold-timer (fix round 2) watches
+  /// [_lastFrameAt]: on phones whose camera cannot stream frames
+  /// while recording, it re-logs the last smoothed face so the
+  /// bake matches the (frozen) preview instead of losing the
+  /// sticker entirely.
+  DateTime _lastFrameAt = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastFaceAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _holdTimer;
+
   /// Latest detected faces (upright image coordinates) for the
   /// live overlay, plus the upright size of the analysed frames.
+  /// [_faceGeo] is the SMOOTHED geometry (see [_detectFaces]);
+  /// [_smoothedFaces] is the smoothing state, [_lastPrimaryGeo]
+  /// the newest primary face for the hold-timer.
   List<FaceGeometry> _faceGeo = [];
+  List<FaceGeometry> _smoothedFaces = [];
+  FaceGeometry? _lastPrimaryGeo;
   Size? _uprightSize;
 
   /// Face positions logged while recording (the bake's source).
@@ -189,6 +224,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     _timer?.cancel();
     _countTimer?.cancel();
     _zoomLabelTimer?.cancel();
+    _holdTimer?.cancel();
     _stopFaceStream();
     _faceDetector.close();
     _controller?.dispose();
@@ -258,6 +294,12 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
         // A fresh controller starts with the torch off; the front
         // camera has no torch at all.
         _flashOn = false;
+        // Fresh controller = fresh (auto) exposure and no face
+        // state carried over from the previous camera.
+        _exposureLocked = false;
+        _smoothedFaces = [];
+        _lastPrimaryGeo = null;
+        _faceGeo = [];
       });
       // Zoom bounds are per-camera (item 1).
       try {
@@ -345,12 +387,13 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   }
 
   // ---------------------------------------------------------------
-  // Zoom (camera upgrade round, item 1)
+  // Zoom (camera upgrade round, item 1; gestures only, fix
+  // round 2)
   // ---------------------------------------------------------------
 
   /// Applies a zoom level, clamped to what THIS camera reports.
-  /// Calls are coalesced: pinch gestures fire faster than the
-  /// platform channel answers, so only the latest value matters.
+  /// Calls are coalesced: gestures fire faster than the platform
+  /// channel answers, so only the latest value matters.
   /// Works mid-recording — CameraX applies zoom to the live
   /// preview and the recording alike.
   Future<void> _setZoom(double z) async {
@@ -382,8 +425,6 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     _zoomInFlight = false;
   }
 
-  void _stepZoom(double delta) => _setZoom(_zoom + delta);
-
   // ---------------------------------------------------------------
   // Face detection (camera upgrade round, item 3)
   // ---------------------------------------------------------------
@@ -392,7 +433,11 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     setState(() {
       _faceKind = kind;
       _strip = _Strip.face;
-      if (kind == null) _faceGeo = [];
+      if (kind == null) {
+        _faceGeo = [];
+        _smoothedFaces = [];
+        _lastPrimaryGeo = null;
+      }
     });
     if (kind == null) {
       _stopFaceStream();
@@ -416,6 +461,11 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     final c = _controller;
     if (c == null || !_streaming) return;
     _streaming = false;
+    if (c.value.isRecordingVideo) {
+      // While recording, the frame stream belongs to the
+      // recording call itself; stopVideoRecording tears it down.
+      return;
+    }
     try {
       await c.stopImageStream();
     } catch (e) {
@@ -424,12 +474,15 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
   }
 
   /// Throttled frame handler: at most one detection in flight and
-  /// one per ~130ms — plenty for a sticker that is baked in 0.5s
-  /// segments, and gentle on the phone.
+  /// one per ~100ms — plenty for a sticker that is baked in 0.5s
+  /// segments, and gentle on the phone. Frames arrive from the
+  /// preview image stream, or — while recording — through the
+  /// recording call's own frame callback (see [_startRecording]).
   void _onCameraFrame(CameraImage image) {
+    _lastFrameAt = DateTime.now();
     if (_detectBusy) return;
     final now = DateTime.now();
-    if (now.difference(_lastDetect).inMilliseconds < 130) return;
+    if (now.difference(_lastDetect).inMilliseconds < 100) return;
     _lastDetect = now;
     _detectBusy = true;
     _detectFaces(image).whenComplete(() => _detectBusy = false);
@@ -446,18 +499,49 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       debugPrint('face detection failed: $e');
       return;
     }
-    final geo = faces.map(_geometryOf).toList();
     if (!mounted) return;
-    setState(() => _faceGeo = geo);
-    if (_recording && geo.isNotEmpty) {
+    final now = DateTime.now();
+    if (faces.isEmpty) {
+      // A momentary dropout (fast head turn, motion blur) must
+      // not make the sticker flicker off: keep the last smoothed
+      // faces for a short grace window, then honestly clear.
+      if (_smoothedFaces.isNotEmpty &&
+          now.difference(_lastFaceAt).inMilliseconds < 700) {
+        return;
+      }
+      if (_smoothedFaces.isNotEmpty) {
+        _lastPrimaryGeo = null;
+        setState(() {
+          _smoothedFaces = [];
+          _faceGeo = [];
+        });
+      }
+      return;
+    }
+    _lastFaceAt = now;
+    // Largest face first: index 0 is the primary face the bake
+    // follows, and a stable order keeps per-index smoothing sane.
+    final raw = faces.map(_geometryOf).toList()
+      ..sort((a, b) => (b.faceRect.width * b.faceRect.height)
+          .compareTo(a.faceRect.width * a.faceRect.height));
+    // Smooth every anchor (fix round 2): raw detector output
+    // jitters by several pixels between frames, which read as
+    // the sticker "not sitting on the face". The SAME smoothed
+    // geometry drives the preview overlay and the recording
+    // track log, so what you see is what bakes.
+    final smoothed = <FaceGeometry>[
+      for (var i = 0; i < raw.length; i++)
+        i < _smoothedFaces.length
+            ? FaceGeometry.smooth(_smoothedFaces[i], raw[i], 0.45)
+            : raw[i],
+    ];
+    _smoothedFaces = smoothed;
+    _lastPrimaryGeo = smoothed.first;
+    setState(() => _faceGeo = smoothed);
+    if (_recording) {
       // Log the primary (largest) face — the bake follows it.
-      final primary = geo.reduce((a, b) =>
-          a.faceRect.width * a.faceRect.height >=
-                  b.faceRect.width * b.faceRect.height
-              ? a
-              : b);
       _track.add(FaceTrackSample(
-          _recWatch.elapsedMilliseconds / 1000.0, primary));
+          _recWatch.elapsedMilliseconds / 1000.0, smoothed.first));
     }
   }
 
@@ -467,10 +551,49 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       return p == null ? null : Offset(p.x.toDouble(), p.y.toDouble());
     }
 
+    Offset? centroidOf(FaceContourType type) {
+      final pts = face.contours[type]?.points;
+      if (pts == null || pts.isEmpty) return null;
+      var sx = 0.0, sy = 0.0;
+      for (final p in pts) {
+        sx += p.x;
+        sy += p.y;
+      }
+      return Offset(sx / pts.length, sy / pts.length);
+    }
+
+    // Face-oval contour extremes (fix round 2): the top point is
+    // the anchor every head-top sticker hangs from — far steadier
+    // than the bounding box top, which breathes with detection
+    // noise.
+    Offset? ovalTop, ovalLeft, ovalRight;
+    final oval = face.contours[FaceContourType.face]?.points;
+    if (oval != null && oval.isNotEmpty) {
+      var top = oval.first, left = oval.first, right = oval.first;
+      for (final p in oval) {
+        if (p.y < top.y) top = p;
+        if (p.x < left.x) left = p;
+        if (p.x > right.x) right = p;
+      }
+      ovalTop = Offset(top.x.toDouble(), top.y.toDouble());
+      ovalLeft = Offset(left.x.toDouble(), left.y.toDouble());
+      ovalRight = Offset(right.x.toDouble(), right.y.toDouble());
+    }
+
     return FaceGeometry(
       faceRect: face.boundingBox,
       leftEye: pt(FaceLandmarkType.leftEye),
       rightEye: pt(FaceLandmarkType.rightEye),
+      noseBase: pt(FaceLandmarkType.noseBase),
+      mouthLeft: pt(FaceLandmarkType.leftMouth),
+      mouthRight: pt(FaceLandmarkType.rightMouth),
+      mouthBottom: pt(FaceLandmarkType.bottomMouth),
+      mouthTop: centroidOf(FaceContourType.upperLipTop),
+      leftEar: pt(FaceLandmarkType.leftEar),
+      rightEar: pt(FaceLandmarkType.rightEar),
+      ovalTop: ovalTop,
+      ovalLeft: ovalLeft,
+      ovalRight: ovalRight,
     );
   }
 
@@ -482,7 +605,14 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     final c = _controller;
     if (c == null || _cameras.isEmpty) return null;
     final camera = _cameras[_cameraIndex];
-    final rotation = _inputRotation(camera, c.value.deviceOrientation);
+    // While recording, the controller locks the capture
+    // orientation; frames follow THAT, not the live device
+    // orientation (fix round 2 — using the live orientation made
+    // mid-recording detections land rotated/offset).
+    final orientation = _recording
+        ? (c.value.recordingOrientation ?? c.value.deviceOrientation)
+        : c.value.deviceOrientation;
+    final rotation = _inputRotation(camera, orientation);
     if (rotation == null) return null;
     final rawFormat = InputImageFormatValue.fromRawValue(image.format.raw);
     final Uint8List bytes;
@@ -669,21 +799,66 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     await _startRecording();
   }
 
+  /// Releases the record-time exposure lock (fix round 2).
+  Future<void> _unlockExposure() async {
+    if (!_exposureLocked) return;
+    _exposureLocked = false;
+    final c = _controller;
+    if (c == null || !c.value.isInitialized) return;
+    try {
+      await c.setExposureMode(ExposureMode.auto);
+    } catch (e) {
+      debugPrint('exposure unlock failed: $e');
+    }
+  }
+
   Future<void> _startRecording() async {
     final c = _controller;
     if (c == null || !c.value.isInitialized || _recording) return;
+
+    // --- Fix round 2: carry the preview's exposure across the
+    // record-start transition. Binding the video use case makes
+    // CameraX rebuild the capture session; left alone, auto-
+    // exposure reconverges under the recorder's frame-rate
+    // limits and the picture drops visibly darker (worst in low
+    // light, exactly the reported bug). Locking AE first freezes
+    // the values the preview had settled on — the plugin sends
+    // CONTROL_AE_LOCK through Camera2 interop, which is a
+    // session-level option that survives the rebind. Released in
+    // [_stop] (or below if the start fails).
+    if (!_exposureLocked) {
+      try {
+        await c.setExposureMode(ExposureMode.locked);
+        _exposureLocked = true;
+      } catch (e) {
+        debugPrint('exposure lock failed: $e');
+      }
+    }
+
+    // --- Face frames while recording (fix round 2): the plugin
+    // UNBINDS the standalone image-analysis stream the moment a
+    // recording starts without a stream callback — in the old
+    // code that silently froze the preview sticker at its
+    // pre-record position AND starved the track log (no frames =
+    // no samples = nothing baked). Frames during recording must
+    // therefore ride the recording call itself, so stop the
+    // standalone stream and hand the frame handler to
+    // startVideoRecording. On phones whose camera hardware can't
+    // stream while recording, frames simply never arrive and the
+    // hold-timer below keeps the bake consistent with the frozen
+    // preview.
+    final wantFaceFrames = _faceKind != null;
+    if (wantFaceFrames) await _stopFaceStream();
+
     var started = false;
     try {
-      await c.startVideoRecording();
+      await c.startVideoRecording(
+          onAvailable: wantFaceFrames ? _onCameraFrame : null);
       started = true;
     } on CameraException catch (e) {
       debugPrint('start recording failed: ${e.code}');
-      if (_streaming) {
-        // Some devices refuse to record while the face-detection
-        // image stream is bound. Drop the stream and retry once;
-        // the face overlay then holds its last position and the
-        // bake holds the last logged face for the rest of the clip.
-        await _stopFaceStream();
+      if (wantFaceFrames) {
+        // Retry once as a plain recording (no frame callback).
         try {
           await c.startVideoRecording();
           started = true;
@@ -693,14 +868,44 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       }
     }
     if (!started) {
+      await _unlockExposure();
+      if (wantFaceFrames) _startFaceStream();
       _showError('Recording could not start. Please try again.');
       return;
+    }
+    if (wantFaceFrames) {
+      // Frames now flow (or not) through the recording call.
+      _streaming = true;
+    }
+    // A torch that was on must survive the session rebind too.
+    if (_flashOn) {
+      try {
+        await c.setFlashMode(FlashMode.torch);
+      } catch (e) {
+        debugPrint('torch re-assert failed: $e');
+      }
     }
     // Face-track logging starts with the recording (item 3).
     _track = [];
     _recWatch
       ..reset()
       ..start();
+    // Hold-timer (fix round 2): if no frames are arriving while
+    // recording (camera hardware limit), re-log the last smoothed
+    // face every 500ms so the sticker the user SEES frozen on
+    // screen is also what the bake draws for the whole clip —
+    // never a sticker that silently vanishes at post time.
+    _holdTimer?.cancel();
+    _holdTimer = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (!_recording || _faceKind == null) return;
+      if (DateTime.now().difference(_lastFrameAt).inMilliseconds < 1200) {
+        return; // frames are flowing — real samples are logged
+      }
+      final g = _lastPrimaryGeo;
+      if (g == null) return;
+      _track.add(FaceTrackSample(
+          _recWatch.elapsedMilliseconds / 1000.0, g));
+    });
     // The picked sound performs along with the recording.
     final sp = _soundPlayer;
     if (sp != null) {
@@ -721,6 +926,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
     final c = _controller;
     if (c == null || !_recording) return;
     _timer?.cancel();
+    _holdTimer?.cancel();
     setState(() => _recording = false);
     await _soundPlayer?.pause();
     _recWatch.stop();
@@ -737,6 +943,11 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
         : null;
     try {
       final file = await c.stopVideoRecording();
+      // The recording call owned the frame stream; the
+      // controller has already torn it down (fix round 2).
+      _streaming = false;
+      // Recording over: exposure goes back to auto (fix round 2).
+      await _unlockExposure();
       if (!mounted) return;
       await Navigator.of(context).pushReplacement(
         MaterialPageRoute(
@@ -756,6 +967,10 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
       );
     } on CameraException catch (e) {
       debugPrint('stop recording failed: ${e.code}');
+      await _unlockExposure();
+      // Still on this screen: resume the preview face stream so
+      // the sticker keeps tracking (fix round 2).
+      if (_faceKind != null) _startFaceStream();
       _showError('The recording could not be saved. Please try again.');
     }
   }
@@ -806,14 +1021,24 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                 if (_initializing || c == null)
                   const Center(child: CircularProgressIndicator())
                 else
-                  // Double-tap switches front/back camera (item 1);
-                  // pinch zooms (camera upgrade round, item 1).
+                  // Double-tap switches front/back camera (item 1).
+                  // Zoom gestures (fix round 2, Snapchat-style —
+                  // no buttons): pinch with two fingers, or drag
+                  // ONE finger vertically (up = zoom in, down =
+                  // zoom out). Both work before AND during
+                  // recording; the scale recogniser reports the
+                  // single-finger drag as focal-point movement.
                   GestureDetector(
                     onDoubleTap: _flip,
                     onScaleStart: (d) => _baseZoom = _zoom,
                     onScaleUpdate: (d) {
                       if (d.pointerCount >= 2) {
                         _setZoom(_baseZoom * d.scale);
+                      } else if (d.pointerCount == 1) {
+                        final dy = d.focalPointDelta.dy;
+                        if (dy != 0) {
+                          _setZoom(_zoom * math.exp(-dy / 260.0));
+                        }
                       }
                     },
                     child: _livePreview(c),
@@ -946,10 +1171,14 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                             ),
                           ),
                         ),
+                      // Record button alone (fix round 2): the
+                      // - / + zoom steppers are gone — zoom is
+                      // gestures only (pinch / vertical drag on
+                      // the preview). The zoom label above stays
+                      // transient: it fades out on its own.
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _zoomStepper(Icons.remove, () => _stepZoom(-0.5)),
                           GestureDetector(
                             onTap: _toggleRecord,
                             child: Container(
@@ -979,7 +1208,6 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                               ),
                             ),
                           ),
-                          _zoomStepper(Icons.add, () => _stepZoom(0.5)),
                         ],
                       ),
                     ],
@@ -987,24 +1215,6 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                 ),
               ],
             ),
-    );
-  }
-
-  /// Zoom stepper flanking the record button (camera upgrade
-  /// round, item 1): tap = ±0.5×, clamped to the camera's range.
-  Widget _zoomStepper(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.black45,
-          border: Border.all(color: Colors.white30),
-        ),
-        child: Icon(icon, color: Colors.white, size: 22),
-      ),
     );
   }
 
