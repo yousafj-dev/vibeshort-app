@@ -6,6 +6,7 @@ import 'package:vibeshort/models/vibe_notification.dart' show timeAgoLabel;
 import 'package:vibeshort/models/vibe_wallet.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
+import 'package:vibeshort/screens/wallet/earn_screen.dart';
 
 /// Wallet (Phase 3, blueprint Sections 2-4 + 8).
 ///
@@ -64,6 +65,8 @@ class _WalletScreenState extends State<WalletScreen> {
               _testModeNote(),
               const SizedBox(height: 16),
               _balanceCard(balances),
+              const SizedBox(height: 16),
+              _inviteEarnButton(context),
               const SizedBox(height: 16),
               _withdrawSection(context, balances),
               const SizedBox(height: 24),
@@ -135,10 +138,11 @@ class _WalletScreenState extends State<WalletScreen> {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Monetization is in test mode. Real payouts will begin '
-              'only after payment-provider setup is complete. Your '
-              'balance below comes only from your transaction ledger '
-              '— nothing is added by hand.',
+              'Coins are being collected now. Cash withdrawals open '
+              'after VibeShort launches on the Play Store and ad '
+              'revenue starts — payouts come only from that revenue. '
+              'Your balance below comes only from your transaction '
+              'ledger — nothing is added by hand.',
               style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
             ),
           ),
@@ -198,6 +202,16 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  Widget _inviteEarnButton(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const EarnScreen()),
+      ),
+      icon: const Icon(Icons.monetization_on_outlined, size: 19),
+      label: const Text('Invite & Earn — collect coins'),
+    );
+  }
+
   Widget _withdrawSection(BuildContext context, WalletBalances b) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -211,7 +225,8 @@ class _WalletScreenState extends State<WalletScreen> {
         Text(
           'Minimum withdrawal ${formatPkr(WalletRules.minWithdrawalPkr.toDouble())} '
           'from your available balance. Every request is reviewed '
-          'manually before any payout.',
+          'manually before any payout. Withdrawals open after the '
+          'Play Store launch.',
           style: const TextStyle(color: AppTheme.muted, fontSize: 12.5),
         ),
       ],
@@ -450,7 +465,9 @@ class _WalletScreenState extends State<WalletScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${positive ? '+' : ''}${formatPkr(t.amount)}',
+                t.isCoin
+                    ? '${positive ? '+' : ''}${formatCoins(t.amountCoins)} coins'
+                    : '${positive ? '+' : ''}${formatPkr(t.amount)}',
                 style: TextStyle(
                   color: positive ? AppTheme.accent : Colors.white,
                   fontWeight: FontWeight.w800,
@@ -561,7 +578,8 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 10),
                 const Text(
                   'Your request will be recorded as Pending review. '
-                  'No payout is sent automatically in test mode.',
+                  'Withdrawals open after the Play Store launch — no '
+                  'payout is sent before then.',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12),
                 ),
               ],

@@ -18,6 +18,88 @@ class WalletRules {
   static const List<String> payoutMethods = ['Easypaisa', 'JazzCash'];
 }
 
+/// Coins earning rules (approved Oct 27, 2026): users collect
+/// COINS now; cash withdrawals open only after the Play Store
+/// launch, once ad revenue starts, and payouts come only from
+/// that revenue (see the in-app Earning Policy page). EVERY
+/// reward number lives here so a rule change is a one-line edit.
+///
+/// Coin credits are written into the SAME ledger as everything
+/// else, with the PKR amount converted at [coinsPerRupee] — so
+/// the ledger-derived PKR balance and the coin balance can never
+/// disagree, and 5,000 coins is exactly the Rs 500 minimum.
+class CoinRules {
+  CoinRules._();
+
+  /// 1,000 coins = Rs 100, i.e. 10 coins = Rs 1.
+  static const int coinsPerRupee = 10;
+
+  /// Credited to the inviter once the invited friend has watched
+  /// their first video to (near-)completion.
+  static const int inviteRewardCoins = 100;
+
+  /// Welcome coins for the invited friend, credited at the same
+  /// qualification moment as the inviter reward.
+  static const int welcomeRewardCoins = 50;
+
+  /// Daily check-in reward, once per calendar day.
+  static const int dailyCheckInCoins = 10;
+
+  /// Per video watched to (near-)completion…
+  static const int watchRewardCoins = 2;
+
+  /// …up to this many coins per day from watching.
+  static const int watchDailyCapCoins = 50;
+
+  /// Minimum withdrawal expressed in coins (= Rs 500).
+  static int get minWithdrawalCoins =>
+      WalletRules.minWithdrawalPkr * coinsPerRupee;
+
+  // Ledger entry types for coin credits.
+  static const String typeReferralInviter = 'referral_inviter';
+  static const String typeReferralWelcome = 'referral_welcome';
+  static const String typeDailyCheckIn = 'daily_checkin';
+  static const String typeWatchReward = 'watch_reward';
+
+  static const Set<String> coinTypes = {
+    typeReferralInviter,
+    typeReferralWelcome,
+    typeDailyCheckIn,
+    typeWatchReward,
+  };
+
+  static bool isCoinType(String type) => coinTypes.contains(type);
+
+  /// Ledger amount (PKR) stored for a credit of [coins] coins.
+  static double pkrForCoins(int coins) => coins / coinsPerRupee;
+
+  /// Coin balance derived from the ledger (same source of truth
+  /// as the PKR balance): sums the coin-type credits that count
+  /// (available + pending; reversed/rejected count to nothing).
+  static int coinBalanceFromTransactions(List<VibeTransaction> txs) {
+    var pkr = 0.0;
+    for (final t in txs) {
+      if (!isCoinType(t.type)) continue;
+      if (t.status == 'available' || t.status == 'pending') {
+        pkr += t.amount;
+      }
+    }
+    return (pkr * coinsPerRupee).round();
+  }
+
+  /// Coins earned from invites only (the Earn screen stat).
+  static int inviteCoinsFromTransactions(List<VibeTransaction> txs) {
+    var pkr = 0.0;
+    for (final t in txs) {
+      if (t.type != typeReferralInviter) continue;
+      if (t.status == 'available' || t.status == 'pending') {
+        pkr += t.amount;
+      }
+    }
+    return (pkr * coinsPerRupee).round();
+  }
+}
+
 /// One entry in the transaction ledger, `vibeshort_transactions`.
 ///
 /// THE LEDGER IS THE SOURCE OF TRUTH for all balances (blueprint
@@ -31,7 +113,10 @@ class VibeTransaction {
   final String id;
   final String userId;
 
-  /// 'reward' | 'referral_reward' | 'withdrawal' | 'adjustment'
+  /// 'reward' | 'referral_reward' | 'withdrawal' | 'adjustment',
+  /// plus the coin credits: CoinRules.typeReferralInviter /
+  /// typeReferralWelcome / typeDailyCheckIn / typeWatchReward
+  /// (amount stored in PKR converted at CoinRules.coinsPerRupee).
   final String type;
   final double amount;
   final String currency;
@@ -78,6 +163,14 @@ class VibeTransaction {
         return 'Creator reward';
       case 'referral_reward':
         return 'Referral reward';
+      case CoinRules.typeReferralInviter:
+        return 'Invite reward';
+      case CoinRules.typeReferralWelcome:
+        return 'Welcome bonus';
+      case CoinRules.typeDailyCheckIn:
+        return 'Daily check-in';
+      case CoinRules.typeWatchReward:
+        return 'Watch reward';
       case 'withdrawal':
         return 'Withdrawal';
       case 'adjustment':
@@ -86,6 +179,13 @@ class VibeTransaction {
         return type.isEmpty ? 'Transaction' : type;
     }
   }
+
+  /// True for coin credits (their history rows are shown in
+  /// coins, not rupees).
+  bool get isCoin => CoinRules.isCoinType(type);
+
+  /// This entry expressed in coins (coin credits only).
+  int get amountCoins => (amount * CoinRules.coinsPerRupee).round();
 }
 
 /// Balances DERIVED from ledger entries. This is the only way the
@@ -282,6 +382,22 @@ class VibeReferral {
     );
   }
 }
+
+/// Formats a coin count with thousands separators, e.g. 1,250.
+String formatCoins(int coins) {
+  final sign = coins < 0 ? '-' : '';
+  final digits = coins.abs().toString();
+  final buf = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buf.write(',');
+    buf.write(digits[i]);
+  }
+  return '$sign$buf';
+}
+
+/// The Rs equivalent of a coin count, e.g. "Rs 125".
+String formatCoinsAsPkr(int coins) =>
+    formatPkr(CoinRules.pkrForCoins(coins));
 
 /// Formats a PKR amount the way the wallet shows it: whole rupees
 /// with thousands separators, e.g. Rs 1,250.

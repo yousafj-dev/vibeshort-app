@@ -974,6 +974,269 @@ class FirestoreService {
   }
 
   // ---------------------------------------------------------------
+  // Coins earning (approved Oct 27, 2026)
+  // Data: vibeshort_earn_claims/{claimId} — one doc per claim,
+  //       used ONLY as an idempotency / daily-cap guard. The
+  //       money itself always lands in the ledger
+  //       (vibeshort_transactions) inside the SAME Firestore
+  //       transaction, so a credit can never happen twice and a
+  //       balance is never edited on its own. All reward numbers
+  //       come from CoinRules (lib/models/vibe_wallet.dart).
+  //
+  // Claim doc ids:
+  //   checkin:  {uid}_checkin_{yyyyMMdd}
+  //   watchcap: {uid}_watch_{yyyyMMdd}   (field: coins = today's
+  //                                        watch coins so far)
+  // Ledger doc ids are deterministic for the same reason:
+  //   checkin_{uid}_{yyyyMMdd}
+  //   watch_{uid}_{yyyyMMdd}_{videoId}
+  //   refinv_{referralId} / refwel_{referralId}
+  // ---------------------------------------------------------------
+
+  CollectionReference get _earnClaims =>
+      _dbSafe.collection('vibeshort_earn_claims');
+
+  /// Local calendar-day key (device timezone; Asia/Karachi for
+  /// the target users) — the check-in / watch-cap day boundary.
+  String _dayKey([DateTime? when]) {
+    final d = when ?? DateTime.now();
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '${d.year}$m$day';
+  }
+
+  Map<String, dynamic> _coinTxData({
+    required String userId,
+    required String type,
+    required int coins,
+    required String idempotencyKey,
+    String reference = '',
+  }) {
+    return {
+      'user_id': userId,
+      'type': type,
+      'amount': CoinRules.pkrForCoins(coins),
+      'currency': WalletRules.currency,
+      'status': 'available',
+      'idempotency_key': idempotencyKey,
+      'reference': reference,
+      'created_at': FieldValue.serverTimestamp(),
+    };
+  }
+
+  /// Recomputes one user's wallet cache from their full ledger
+  /// (the cache is a cross-check copy; the ledger stays the
+  /// source of truth). Used after coin credits, whose writes
+  /// span users and cannot ride the withdrawal batch helper.
+  Future<void> _refreshWalletCache(String uid) async {
+    try {
+      final snap =
+          await _transactions.where('user_id', isEqualTo: uid).get();
+      final txs = snap.docs.map(VibeTransaction.fromDoc).toList();
+      final b = WalletBalances.fromTransactions(txs);
+      await _wallets.doc(uid).set(
+        {
+          'user_id': uid,
+          'currency': WalletRules.currency,
+          'cached_pending': b.pending,
+          'cached_available': b.available,
+          'cached_paid': b.paid,
+          'updated_at': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      debugPrint('_refreshWalletCache failed: $e');
+    }
+  }
+
+  /// Has today's daily check-in already been claimed?
+  Stream<bool> dailyCheckInClaimed() {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return Stream.value(false);
+    try {
+      return _earnClaims
+          .doc('${uid}_checkin_${_dayKey()}')
+          .snapshots()
+          .map((d) => d.exists);
+    } catch (e) {
+      debugPrint('dailyCheckInClaimed failed: $e');
+      return Stream.value(false);
+    }
+  }
+
+  /// Claims today's +10 check-in coins. Returns true when the
+  /// coins were credited by THIS call; false when today was
+  /// already claimed (or the user is logged out). The claim doc
+  /// and the ledger entry are written in one transaction keyed
+  /// by uid+day, so a double-tap or retry can never pay twice.
+  Future<bool> claimDailyCheckIn() async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return false;
+    final day = _dayKey();
+    final claimRef = _earnClaims.doc('${uid}_checkin_$day');
+    final txRef = _transactions.doc('checkin_${uid}_$day');
+    try {
+      final credited = await _dbSafe.runTransaction<bool>((tx) async {
+        final claim = await tx.get(claimRef);
+        if (claim.exists) return false;
+        final existing = await tx.get(txRef);
+        if (existing.exists) return false;
+        tx.set(claimRef, {
+          'user_id': uid,
+          'kind': 'checkin',
+          'day': day,
+          'coins': CoinRules.dailyCheckInCoins,
+          'created_at': FieldValue.serverTimestamp(),
+        });
+        tx.set(
+          txRef,
+          _coinTxData(
+            userId: uid,
+            type: CoinRules.typeDailyCheckIn,
+            coins: CoinRules.dailyCheckInCoins,
+            idempotencyKey: 'checkin_${uid}_$day',
+          ),
+        );
+        return true;
+      });
+      if (credited) await _refreshWalletCache(uid);
+      return credited;
+    } catch (e) {
+      debugPrint('claimDailyCheckIn failed: $e');
+      return false;
+    }
+  }
+
+  /// Called by the feed player when a video has been watched to
+  /// (near-)completion — once per video card. Two best-effort
+  /// jobs, each idempotent; a failure here must NEVER disturb
+  /// playback:
+  ///   1. my referral qualification — if I signed up with
+  ///      someone's code, this first completed watch qualifies
+  ///      the referral: the inviter gets +100 coins and I get
+  ///      +50 welcome coins, in one transaction.
+  ///   2. my watch reward — +2 coins for this video (never for
+  ///      my own videos), capped per day by CoinRules.
+  Future<void> reportWatchCompleted(VibeVideo video) async {
+    final uid = AuthService.instance.uid;
+    if (uid == null) return;
+    await _qualifyMyReferralIfNeeded(uid);
+    if (video.uid != uid) {
+      await _creditWatchReward(uid, video.id);
+    }
+  }
+
+  Future<void> _qualifyMyReferralIfNeeded(String uid) async {
+    try {
+      final q = await _referrals
+          .where('referred_user_id', isEqualTo: uid)
+          .limit(1)
+          .get();
+      if (q.docs.isEmpty) return;
+      final refDoc = q.docs.first;
+      final data = refDoc.data() as Map<String, dynamic>? ?? {};
+      if ((data['qualification_status'] ?? 'pending') != 'pending') {
+        return;
+      }
+      final referrerId = (data['referrer_id'] ?? '') as String;
+      if (referrerId.isEmpty || referrerId == uid) return;
+      final refRef = _referrals.doc(refDoc.id);
+      final inviterTxRef = _transactions.doc('refinv_${refDoc.id}');
+      final welcomeTxRef = _transactions.doc('refwel_${refDoc.id}');
+      final done = await _dbSafe.runTransaction<bool>((tx) async {
+        final fresh = await tx.get(refRef);
+        final d = fresh.data() as Map<String, dynamic>? ?? {};
+        if ((d['qualification_status'] ?? 'pending') != 'pending') {
+          return false;
+        }
+        final inviterExisting = await tx.get(inviterTxRef);
+        if (!inviterExisting.exists) {
+          tx.set(
+            inviterTxRef,
+            _coinTxData(
+              userId: referrerId,
+              type: CoinRules.typeReferralInviter,
+              coins: CoinRules.inviteRewardCoins,
+              idempotencyKey: 'refinv_${refDoc.id}',
+              reference: refDoc.id,
+            ),
+          );
+        }
+        final welcomeExisting = await tx.get(welcomeTxRef);
+        if (!welcomeExisting.exists) {
+          tx.set(
+            welcomeTxRef,
+            _coinTxData(
+              userId: uid,
+              type: CoinRules.typeReferralWelcome,
+              coins: CoinRules.welcomeRewardCoins,
+              idempotencyKey: 'refwel_${refDoc.id}',
+              reference: refDoc.id,
+            ),
+          );
+        }
+        tx.update(refRef, {
+          'qualification_status': 'qualified',
+          'reward_transaction_id': inviterTxRef.id,
+          'qualified_at': FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+      if (done) {
+        await _refreshWalletCache(referrerId);
+        await _refreshWalletCache(uid);
+      }
+    } catch (e) {
+      debugPrint('_qualifyMyReferralIfNeeded failed: $e');
+    }
+  }
+
+  Future<void> _creditWatchReward(String uid, String videoId) async {
+    final day = _dayKey();
+    final capRef = _earnClaims.doc('${uid}_watch_$day');
+    final txRef = _transactions.doc('watch_${uid}_${day}_$videoId');
+    try {
+      final credited = await _dbSafe.runTransaction<bool>((tx) async {
+        final existing = await tx.get(txRef);
+        if (existing.exists) return false; // this video already paid today
+        final capSnap = await tx.get(capRef);
+        final capData = capSnap.data() as Map<String, dynamic>? ?? {};
+        final soFar = (capData['coins'] as num?)?.toInt() ?? 0;
+        if (soFar + CoinRules.watchRewardCoins >
+            CoinRules.watchDailyCapCoins) {
+          return false; // daily watch cap reached
+        }
+        tx.set(
+          capRef,
+          {
+            'user_id': uid,
+            'kind': 'watch_cap',
+            'day': day,
+            'coins': soFar + CoinRules.watchRewardCoins,
+            'updated_at': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        tx.set(
+          txRef,
+          _coinTxData(
+            userId: uid,
+            type: CoinRules.typeWatchReward,
+            coins: CoinRules.watchRewardCoins,
+            idempotencyKey: 'watch_${uid}_${day}_$videoId',
+            reference: videoId,
+          ),
+        );
+        return true;
+      });
+      if (credited) await _refreshWalletCache(uid);
+    } catch (e) {
+      debugPrint('_creditWatchReward failed: $e');
+    }
+  }
+
+  // ---------------------------------------------------------------
   // Safety: reports & blocks (Phase 4)
   // Data: vibeshort_reports/{id}, vibeshort_blocks/{id}
   //

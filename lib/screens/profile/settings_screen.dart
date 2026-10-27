@@ -475,6 +475,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 _row(
+                  icon: Icons.monetization_on_outlined,
+                  label: 'Earning Policy',
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const EarningPolicyScreen()),
+                  ),
+                ),
+                _row(
                   icon: Icons.info_outline,
                   label: 'About',
                   value: 'VibeShort · Version 1.0.0',

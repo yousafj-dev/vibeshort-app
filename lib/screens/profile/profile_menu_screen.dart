@@ -10,6 +10,7 @@ import 'package:vibeshort/screens/profile/creator_dashboard_screen.dart';
 import 'package:vibeshort/screens/profile/offline_videos_screen.dart';
 import 'package:vibeshort/screens/profile/qr_code_screen.dart';
 import 'package:vibeshort/screens/profile/settings_screen.dart';
+import 'package:vibeshort/screens/wallet/earn_screen.dart';
 import 'package:vibeshort/screens/wallet/wallet_screen.dart';
 
 /// The profile side menu (☰ on My Profile), TikTok layout:
@@ -55,6 +56,13 @@ class ProfileMenuScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 12),
         children: [
+          _item(
+            context,
+            icon: Icons.monetization_on_outlined,
+            label: 'Invite & Earn',
+            subtitle: 'Invite friends, collect coins',
+            screen: const EarnScreen(),
+          ),
           _item(
             context,
             icon: Icons.account_balance_wallet_outlined,

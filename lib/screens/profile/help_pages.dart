@@ -55,7 +55,7 @@ class HelpCenterScreen extends StatelessWidget {
         ),
         (
           'Why is my Wallet balance Rs 0?',
-          'The Wallet is in test mode. Balances, withdrawals (Easypaisa / JazzCash, minimum Rs 500) and referral rewards are recorded in the ledger so everything can be checked, but no real money moves until a payment provider is connected. Nothing you see there is a promise of payment yet.'
+          'Your balance grows from the coins you earn (invites, daily check-in, watching videos) — 1,000 coins = Rs 100. Every coin is recorded in the Wallet ledger so it can be checked. Cash withdrawals open only after VibeShort launches on the Play Store and ad revenue starts; see Invite & Earn → Earning Policy for the full rules.'
         ),
         (
           'How do I report a video or a user?',
@@ -137,11 +137,52 @@ class TermsScreen extends StatelessWidget {
         ),
         (
           'Wallet and rewards',
-          'The Wallet is in test mode. Shown balances are ledger records only — they are not money, not a payment promise, and cannot be withdrawn until a payment provider is connected and announced in the app.'
+          'Coins and Wallet balances are ledger records inside the app. They are not money and not a payment promise. Cash withdrawals open only after the Play Store launch and the start of ad revenue, under the Earning Policy shown in the app (Invite & Earn → Earning Policy). Earnings are never guaranteed.'
         ),
         (
           'Availability',
           'VibeShort is provided as-is while it grows. Features may change, and the service may be paused for maintenance with a notice in the app.'
+        ),
+      ],
+    );
+  }
+}
+
+class EarningPolicyScreen extends StatelessWidget {
+  const EarningPolicyScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _StaticPage(
+      title: 'Earning Policy',
+      sections: [
+        (
+          'What coins are',
+          'Coins are reward points inside VibeShort. You collect them in your Wallet, and every coin is recorded in your transaction ledger so your balance can always be checked. 1,000 coins = Rs 100 (10 coins = Rs 1). Coins are not money and cannot be transferred to another account.'
+        ),
+        (
+          'How to earn coins',
+          'Invite a friend: when a friend signs up with your invite code AND watches their first video, you get 100 coins and your friend gets 50 welcome coins. Daily check-in: 10 coins once a day. Watching videos: 2 coins per video watched, up to 50 coins a day from watching.'
+        ),
+        (
+          'When cash withdrawals open',
+          'You can collect coins from today. Cash withdrawals open only AFTER VibeShort launches on the Play Store and advertising revenue starts coming in. Until then, withdrawal requests can be recorded in the Wallet but no cash is paid out.'
+        ),
+        (
+          'Where the money comes from',
+          'Payouts are made only from VibeShort\'s advertising revenue. If there is no revenue, there is no payout — earnings are never guaranteed, and no reward shown in the app is a promise of payment.'
+        ),
+        (
+          'Withdrawal rules',
+          'Minimum withdrawal is Rs 500 (5,000 coins), paid to Easypaisa or JazzCash. Only your available balance can be withdrawn. Every request is reviewed manually before any payout is made, and a rejected request returns the held amount to your balance.'
+        ),
+        (
+          'Fair use',
+          'Self-referrals, fake accounts, multiple accounts on one device and any trick used to farm coins do not qualify and can have their coins removed. An invite reward is paid only after the invited friend has really joined and watched a video.'
+        ),
+        (
+          'Changes',
+          'Coin rates and rules are published in the app and may change as the app grows. Any change will be announced in the app before it applies.'
         ),
       ],
     );

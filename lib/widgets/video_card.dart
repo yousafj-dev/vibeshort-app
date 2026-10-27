@@ -99,6 +99,11 @@ class _VideoCardState extends State<VideoCard>
   late bool _liked;
   late int _likes;
 
+  /// Coins earning: true once this card has reported a
+  /// (near-)complete watch to the service — reported at most
+  /// once per card, however long the video loops.
+  bool _completionReported = false;
+
   /// Tap recognizers for the caption's hashtag spans; rebuilt with
   /// the spans and disposed with the card.
   final List<TapGestureRecognizer> _captionRecognizers = [];
@@ -199,6 +204,7 @@ class _VideoCardState extends State<VideoCard>
       await ctrl.initialize();
       await ctrl.setLooping(true);
       await ctrl.setPlaybackSpeed(_speed);
+      ctrl.addListener(_onPlaybackTick);
       if (!mounted) {
         ctrl.dispose();
         return;
@@ -254,8 +260,27 @@ class _VideoCardState extends State<VideoCard>
     for (final r in _captionRecognizers) {
       r.dispose();
     }
+    _ctrl?.removeListener(_onPlaybackTick);
     _ctrl?.dispose();
     super.dispose();
+  }
+
+  /// Coins earning: the player loops, so a "completed" watch is
+  /// detected by position — once playback passes 80% of the
+  /// duration, this card reports it (the service turns that into
+  /// the watch reward and, for a referred user's first completed
+  /// video, the referral qualification). Guarded so it fires
+  /// exactly once per card.
+  void _onPlaybackTick() {
+    if (_completionReported || !_ready) return;
+    final ctrl = _ctrl;
+    if (ctrl == null) return;
+    final duration = ctrl.value.duration;
+    if (duration.inMilliseconds <= 0) return;
+    if (ctrl.value.position >= duration * 0.8) {
+      _completionReported = true;
+      FirestoreService.instance.reportWatchCompleted(widget.video);
+    }
   }
 
   /// Caption as rich text: `#tags` in the accent color, tappable to

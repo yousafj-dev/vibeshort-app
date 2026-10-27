@@ -39,37 +39,43 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            Test build of VibeShort (short video app) — Fix
-            round 3. FIXED (login): closing the app from Recents
-            no longer logs you out — the app now runs under a
-            registered Android app identity (the native session
-            store needs one), the start-up gate restores a
-            lagging session instead of bouncing to login, and a
-            slow connection can no longer sign you out. You may
-            be asked to log in ONE last time after installing;
-            after that it should stick. NEW (record button):
-            press and HOLD to record Snapchat-style — slide the
-            held finger up to zoom in, down to zoom out, and
-            let go to stop. A quick tap still works the old way
-            (tap to start, tap to stop). Everything from fix
-            round 2 stays: the preview no longer goes dark when
-            you tap record (exposure is locked at the preview's
-            brightness), zoom is gestures only (the - / + buttons
-            are gone), and the 10 face stickers (Shades, Crown,
-            Stars, Flowers, Dog, Cat, Bunny, Stache, Cap, Halo)
-            keep tracking while you record and are baked into
-            the posted video where you saw them.
-            Your filter/effect also stays visible on screen the
-            whole time you record.
-            Everything from before stays: TikTok-style sound
-            pages and "Use this sound", TikTok-style camera with
-            30 live looks and post-applied structural effects,
-            own-video actions (Download / Pin / Edit captions /
-            Delete), feed long-press menu, Settings Wallet entry,
-            12 built-in royalty-free sounds, tap-Home and
-            pull-down feed refresh, Admin panel + safety, Wallet
-            with ledger and referrals, 5-tab navigation, Discover,
-            Inbox, Following | For You.
+            Test build of VibeShort (short video app) — NEW:
+            COINS EARNING SYSTEM (Invite & Earn). A new
+            "Invite & Earn" screen (top of the profile menu,
+            and a button inside the Wallet) shows your coin
+            balance (1,000 coins = Rs 100), your invite code
+            with copy + Share buttons, friends-joined stats,
+            and the full Earning Policy. HOW COINS ARE EARNED:
+            invite a friend — when they sign up with your code
+            AND watch their first video, you get +100 coins and
+            they get +50 welcome coins; daily check-in +10
+            coins (claim button on the Earn screen, once a
+            day); watching a video to the end +2 coins, up to
+            50 coins a day. Every coin goes through the Wallet
+            ledger (Invite reward / Welcome bonus / Daily
+            check-in / Watch reward) so balances stay
+            checkable. HONEST POLICY, shown in the app: coins
+            are collected now; cash withdrawals (minimum
+            Rs 500 = 5,000 coins, Easypaisa / JazzCash) open
+            only AFTER the Play Store launch, from ad revenue
+            — earnings are never guaranteed. Withdrawal
+            requests still just record as Pending review, as
+            before. Everything from before stays: login that
+            survives closing the app from Recents (one last
+            login may be asked after installing), hold-to-
+            record with slide zoom, exposure locked so the
+            preview does not go dark when recording starts,
+            gesture-only zoom, the 10 face stickers (Shades,
+            Crown, Stars, Flowers, Dog, Cat, Bunny, Stache,
+            Cap, Halo) tracking during recording and baked
+            into posted videos, TikTok-style sound pages and
+            "Use this sound", TikTok-style camera with 30 live
+            looks, own-video actions (Download / Pin / Edit
+            captions / Delete), feed long-press menu, Settings
+            Wallet entry, 12 built-in royalty-free sounds,
+            tap-Home and pull-down feed refresh, Admin panel +
+            safety, Wallet with ledger and referrals, 5-tab
+            navigation, Discover, Inbox, Following | For You.
             Install steps: uninstall any old VibeShort build first if one
             is installed, then install this APK and allow "Install unknown
             apps" when asked.
