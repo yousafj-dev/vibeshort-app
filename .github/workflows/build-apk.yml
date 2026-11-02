@@ -39,6 +39,10 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
+            NEW IN THIS BUILD: Firebase Crashlytics automatic
+            crash reporting — crash reports include phone
+            model, Android version and crash cause. Everything
+            else identical to test-apk-14.
             Test build of VibeShort (short video app) — NEW:
             COINS EARNING SYSTEM (Invite & Earn). A new
             "Invite & Earn" screen (top of the profile menu,

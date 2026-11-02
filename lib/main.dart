@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:vibeshort/core/route_observer.dart';
@@ -67,6 +70,20 @@ void main() async {
   // Firebase is optional at runtime: the app still opens (with a
   // friendly offline message on actions) when init fails.
   AuthService.firebaseReady = await _initFirebase();
+  if (AuthService.firebaseReady) {
+    // Automatic crash reporting (Firebase Crashlytics): fatal
+    // Flutter errors and uncaught async/platform errors are
+    // reported with device model + Android version + cause, so
+    // crashes on testers' phones can be diagnosed remotely.
+    // Only wired when Firebase initialized — Crashlytics needs
+    // the default app to exist.
+    FlutterError.onError =
+        FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+  }
   debugPrint(AuthService.firebaseReady
       ? 'VibeShort: Firebase ready'
       : 'VibeShort: Firebase init failed (offline mode)');
