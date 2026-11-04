@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 
-/// VibeShort dark theme — deep navy-black background, white text,
-/// cyan primary with a violet accent. Gradients built from
-/// [accent] → [accent2] give the cyan-to-violet look used on the
-/// splash, logo and CTAs.
+/// VibeShort theming — brand is cyan → violet on deep navy-black
+/// (dark, the default) with a light alternative the user can pick
+/// in Settings (build 16: Dark / Light mode).
+///
+/// Chrome colors ([bg], [card], [muted], [text], [hairline]) are
+/// getters driven by [lightMode] so every screen that reads them
+/// at build time follows the chosen mode; flipping the mode and
+/// rebuilding the app (see PrefsService.themeNotifier in main)
+/// re-themes the whole UI. Media surfaces that must stay dark in
+/// BOTH modes (camera, video editor) use the pinned [bgDark] /
+/// [cardDark] / [mutedDark] constants instead.
 class AppTheme {
   AppTheme._();
 
-  static const Color bg = Color(0xFF0A0A12);
-  static const Color card = Color(0xFF15151F);
+  // ---- Brand (same in both modes) ----
   static const Color accent = Color(0xFF00C2FF); // cyan
   static const Color accent2 = Color(0xFF7C4DFF); // violet
-  static const Color muted = Color(0xFF9A97AD);
 
   /// Primary cyan → violet gradient.
   static const LinearGradient primaryGradient = LinearGradient(
@@ -20,34 +25,117 @@ class AppTheme {
     end: Alignment.bottomRight,
   );
 
+  // ---- Dark palette (default; pinned for always-dark surfaces) ----
+  static const Color bgDark = Color(0xFF0A0A12);
+  static const Color cardDark = Color(0xFF15151F);
+  static const Color mutedDark = Color(0xFF9A97AD);
+  static const Color textDark = Colors.white;
+  static const Color hairlineDark = Color(0x1AFFFFFF);
+
+  // ---- Light palette ----
+  static const Color bgLight = Color(0xFFF5F5FA);
+  static const Color cardLight = Color(0xFFFFFFFF);
+  static const Color mutedLight = Color(0xFF62617A);
+  static const Color textLight = Color(0xFF16161F);
+  static const Color hairlineLight = Color(0x1A000000);
+
+  /// False = dark mode (default). Set from the persisted device
+  /// preference by PrefsService before the first frame, and on
+  /// every Settings change.
+  static bool lightMode = false;
+
+  static Color get bg => lightMode ? bgLight : bgDark;
+  static Color get card => lightMode ? cardLight : cardDark;
+  static Color get muted => lightMode ? mutedLight : mutedDark;
+
+  /// Primary foreground (text / chrome icons) for the mode.
+  static Color get text => lightMode ? textLight : textDark;
+
+  /// Hairline dividers / subtle borders for the mode.
+  static Color get hairline => lightMode ? hairlineLight : hairlineDark;
+
   static ThemeData dark() {
     const scheme = ColorScheme.dark(
       primary: accent,
       secondary: accent2,
-      surface: card,
-      background: bg,
+      surface: cardDark,
+      background: bgDark,
     );
+    return _base(
+      scheme: scheme,
+      scaffold: bgDark,
+      appBarBg: bgDark,
+      appBarFg: textDark,
+      inputFill: cardDark,
+      hint: mutedDark,
+      navBg: bgDark,
+      navSelected: textDark,
+      navUnselected: mutedDark,
+      cardColor: cardDark,
+      hairline: hairlineDark,
+    );
+  }
+
+  static ThemeData light() {
+    const scheme = ColorScheme.light(
+      primary: accent,
+      secondary: accent2,
+      surface: cardLight,
+      background: bgLight,
+    );
+    return _base(
+      scheme: scheme,
+      scaffold: bgLight,
+      appBarBg: bgLight,
+      appBarFg: textLight,
+      // Fields sit on white cards and on the light scaffold:
+      // a soft grey-violet well reads clearly on both.
+      inputFill: Color(0xFFECECF3),
+      hint: mutedLight,
+      navBg: bgLight,
+      navSelected: textLight,
+      navUnselected: mutedLight,
+      cardColor: cardLight,
+      hairline: hairlineLight,
+    );
+  }
+
+  static ThemeData _base({
+    required ColorScheme scheme,
+    required Color scaffold,
+    required Color appBarBg,
+    required Color appBarFg,
+    required Color inputFill,
+    required Color hint,
+    required Color navBg,
+    required Color navSelected,
+    required Color navUnselected,
+    required Color cardColor,
+    required Color hairline,
+  }) {
     return ThemeData(
       useMaterial3: true,
       // Pin the clean default sans explicitly so the app never
       // inherits an exotic system font from the phone's theme.
       fontFamily: 'Roboto',
       colorScheme: scheme,
-      scaffoldBackgroundColor: bg,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: bg,
+      scaffoldBackgroundColor: scaffold,
+      appBarTheme: AppBarTheme(
+        backgroundColor: appBarBg,
         elevation: 0,
         centerTitle: false,
+        iconTheme: IconThemeData(color: appBarFg),
+        actionsIconTheme: IconThemeData(color: appBarFg),
         titleTextStyle: TextStyle(
-          color: Colors.white,
+          color: appBarFg,
           fontSize: 20,
           fontWeight: FontWeight.w700,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: card,
-        hintStyle: const TextStyle(color: muted),
+        fillColor: inputFill,
+        hintStyle: TextStyle(color: hint),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -69,14 +157,16 @@ class AppTheme {
           ),
         ),
       ),
-      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: bg,
-        selectedItemColor: Colors.white,
-        unselectedItemColor: muted,
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        backgroundColor: navBg,
+        selectedItemColor: navSelected,
+        unselectedItemColor: navUnselected,
         showSelectedLabels: false,
         showUnselectedLabels: false,
         type: BottomNavigationBarType.fixed,
       ),
+      bottomSheetTheme: BottomSheetThemeData(backgroundColor: cardColor),
+      dividerTheme: DividerThemeData(color: hairline, thickness: 1),
     );
   }
 }

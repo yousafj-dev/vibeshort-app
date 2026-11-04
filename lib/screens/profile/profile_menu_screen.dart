@@ -120,7 +120,7 @@ class ProfileMenuScreen extends StatelessWidget {
               );
             },
           ),
-          const Divider(color: Colors.white10, height: 24),
+          Divider(color: AppTheme.hairline, height: 24),
           ListTile(
             leading: const Icon(Icons.logout, color: Color(0xFFFF5C7A)),
             title: const Text('Log out',
@@ -141,11 +141,11 @@ class ProfileMenuScreen extends StatelessWidget {
     bool accent = false,
   }) {
     return ListTile(
-      leading: Icon(icon, color: accent ? AppTheme.accent : Colors.white),
-      title: Text(label, style: const TextStyle(color: Colors.white)),
+      leading: Icon(icon, color: accent ? AppTheme.accent : AppTheme.text),
+      title: Text(label, style: TextStyle(color: AppTheme.text)),
       subtitle:
-          Text(subtitle, style: const TextStyle(color: AppTheme.muted)),
-      trailing: const Icon(Icons.chevron_right, color: AppTheme.muted),
+          Text(subtitle, style: TextStyle(color: AppTheme.muted)),
+      trailing: Icon(Icons.chevron_right, color: AppTheme.muted),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => screen),
       ),

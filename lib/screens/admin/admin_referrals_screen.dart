@@ -49,7 +49,7 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
           }
           final list = snap.data ?? const <VibeReferral>[];
           if (list.isEmpty) {
-            return const Center(
+            return Center(
               child: Text('No referrals recorded yet.',
                   style: TextStyle(color: AppTheme.muted)),
             );
@@ -88,14 +88,14 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     UserNameText(r.referrerId,
-                        style: const TextStyle(
-                            color: Colors.white,
+                        style: TextStyle(
+                            color: AppTheme.text,
                             fontWeight: FontWeight.w700)),
-                    const Text('  referred  ',
+                    Text('  referred  ',
                         style: TextStyle(color: AppTheme.muted)),
                     UserNameText(r.referredUserId,
-                        style: const TextStyle(
-                            color: Colors.white,
+                        style: TextStyle(
+                            color: AppTheme.text,
                             fontWeight: FontWeight.w700)),
                   ],
                 ),
@@ -112,7 +112,7 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
           Text(
             'Code: ${r.code} • ${fmtDate(r.createdAt)}'
             '${r.rewardTransactionId != null ? ' • Reward tx: ${r.rewardTransactionId}' : ''}',
-            style: const TextStyle(color: AppTheme.muted, fontSize: 12.5),
+            style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
           ),
           if (status == 'pending') ...[
             const SizedBox(height: 10),

@@ -47,8 +47,8 @@ Future<void> editCaptionAction(BuildContext context, VibeVideo video) async {
         maxLines: 4,
         minLines: 2,
         maxLength: 300,
-        style: const TextStyle(color: Colors.white),
-        decoration: const InputDecoration(
+        style: TextStyle(color: AppTheme.text),
+        decoration: InputDecoration(
           hintText: 'Write a caption… use #hashtags',
           hintStyle: TextStyle(color: AppTheme.muted),
         ),
@@ -107,15 +107,20 @@ Future<void> deleteVideoAction(BuildContext context, VibeVideo video) async {
 Widget _row(
   IconData icon,
   String label, {
-  Color color = Colors.white,
+  Color? color,
   String? subtitle,
 }) {
+  // Default row color follows the theme (build 16): it used to be
+  // a white constant, which a color default cannot express now
+  // that the foreground is mode-aware — callers pass an explicit
+  // color only for the destructive (red) row.
+  final c = color ?? AppTheme.text;
   return ListTile(
-    leading: Icon(icon, color: color),
-    title: Text(label, style: TextStyle(color: color)),
+    leading: Icon(icon, color: c),
+    title: Text(label, style: TextStyle(color: c)),
     subtitle: subtitle == null
         ? null
-        : Text(subtitle, style: const TextStyle(color: AppTheme.muted)),
+        : Text(subtitle, style: TextStyle(color: AppTheme.muted)),
   );
 }
 
@@ -168,7 +173,7 @@ Future<void> showOwnVideoActions(BuildContext context, VibeVideo video) {
               },
               child: _row(Icons.share_outlined, 'Share'),
             ),
-            const Divider(color: Colors.white10, height: 1),
+            Divider(color: AppTheme.hairline, height: 1),
             InkWell(
               onTap: () {
                 Navigator.of(sheetCtx).pop();

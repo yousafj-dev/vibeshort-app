@@ -124,7 +124,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 ? NetworkImage(_photoUrl)
                                 : null,
                             child: _photoUrl.isEmpty
-                                ? const Icon(Icons.person,
+                                ? Icon(Icons.person,
                                     size: 52, color: AppTheme.muted)
                                 : null,
                           ),
@@ -146,7 +146,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Center(
+                  Center(
                     child: Text('Tap to change photo',
                         style: TextStyle(color: AppTheme.muted, fontSize: 13)),
                   ),

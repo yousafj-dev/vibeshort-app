@@ -43,7 +43,7 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget build(BuildContext context) {
     final uid = AuthService.instance.uid;
     if (uid == null) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
           child:
               Text('Please log in.', style: TextStyle(color: AppTheme.muted)),
@@ -77,7 +77,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 builder: (context, snap) {
                   final list = snap.data ?? const <VibeWithdrawal>[];
                   if (list.isEmpty) {
-                    return const Text(
+                    return Text(
                       'No withdrawal requests yet.',
                       style: TextStyle(color: AppTheme.muted),
                     );
@@ -106,7 +106,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 )
               else if (txs.isEmpty)
-                const Text(
+                Text(
                   'No transactions yet. Your ledger is empty and your balance is Rs 0.',
                   style: TextStyle(color: AppTheme.muted),
                 )
@@ -129,9 +129,9 @@ class _WalletScreenState extends State<WalletScreen> {
       decoration: BoxDecoration(
         color: AppTheme.card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: AppTheme.hairline),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.info_outline, color: AppTheme.accent, size: 20),
@@ -143,7 +143,7 @@ class _WalletScreenState extends State<WalletScreen> {
               'revenue starts — payouts come only from that revenue. '
               'Your balance below comes only from your transaction '
               'ledger — nothing is added by hand.',
-              style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4),
+              style: TextStyle(color: AppTheme.text.withOpacity(0.7), fontSize: 13, height: 1.4),
             ),
           ),
         ],
@@ -227,7 +227,7 @@ class _WalletScreenState extends State<WalletScreen> {
           'from your available balance. Every request is reviewed '
           'manually before any payout. Withdrawals open after the '
           'Play Store launch.',
-          style: const TextStyle(color: AppTheme.muted, fontSize: 12.5),
+          style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
         ),
       ],
     );
@@ -244,7 +244,7 @@ class _WalletScreenState extends State<WalletScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Your referral code',
             style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
           ),
@@ -258,8 +258,8 @@ class _WalletScreenState extends State<WalletScreen> {
                   Expanded(
                     child: Text(
                       code.isEmpty ? '…' : code,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: AppTheme.text,
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
@@ -267,8 +267,8 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.copy_outlined,
-                        color: Colors.white70, size: 20),
+                    icon: Icon(Icons.copy_outlined,
+                        color: AppTheme.text.withOpacity(0.7), size: 20),
                     onPressed: code.isEmpty
                         ? null
                         : () async {
@@ -278,8 +278,8 @@ class _WalletScreenState extends State<WalletScreen> {
                           },
                   ),
                   IconButton(
-                    icon: const Icon(Icons.share_outlined,
-                        color: Colors.white70, size: 20),
+                    icon: Icon(Icons.share_outlined,
+                        color: AppTheme.text.withOpacity(0.7), size: 20),
                     onPressed: code.isEmpty
                         ? null
                         : () => Share.share(
@@ -291,7 +291,7 @@ class _WalletScreenState extends State<WalletScreen> {
             },
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Friends enter this code when they sign up. Referral '
             'rewards apply only to verified, qualifying referrals — '
             'self-referrals and fake accounts do not qualify.',
@@ -303,7 +303,7 @@ class _WalletScreenState extends State<WalletScreen> {
             builder: (context, snap) {
               final list = snap.data ?? const <VibeReferral>[];
               if (list.isEmpty) {
-                return const Text(
+                return Text(
                   'No referrals yet.',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
                 );
@@ -313,8 +313,8 @@ class _WalletScreenState extends State<WalletScreen> {
                 children: [
                   Text(
                     '${list.length} ${list.length == 1 ? 'friend' : 'friends'} joined with your code:',
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 12.5),
+                    style: TextStyle(
+                        color: AppTheme.text.withOpacity(0.7), fontSize: 12.5),
                   ),
                   const SizedBox(height: 6),
                   ...list.map(
@@ -322,14 +322,14 @@ class _WalletScreenState extends State<WalletScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 3),
                       child: Row(
                         children: [
-                          const Icon(Icons.person_add_alt_1_outlined,
+                          Icon(Icons.person_add_alt_1_outlined,
                               size: 16, color: AppTheme.muted),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               'Joined • ${timeAgoLabel(r.createdAt)}',
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12.5),
+                              style: TextStyle(
+                                  color: AppTheme.text.withOpacity(0.7), fontSize: 12.5),
                             ),
                           ),
                           _chip(r.qualificationStatus),
@@ -375,8 +375,8 @@ class _WalletScreenState extends State<WalletScreen> {
                     Expanded(
                       child: Text(
                         r,
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 13, height: 1.4),
+                        style: TextStyle(
+                            color: AppTheme.text.withOpacity(0.7), fontSize: 13, height: 1.4),
                       ),
                     ),
                   ],
@@ -402,7 +402,7 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.payments_outlined, color: Colors.white70, size: 20),
+          Icon(Icons.payments_outlined, color: AppTheme.text.withOpacity(0.7), size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -410,13 +410,13 @@ class _WalletScreenState extends State<WalletScreen> {
               children: [
                 Text(
                   '${formatPkr(w.amount)} → ${w.payoutMethod}',
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                      color: AppTheme.text, fontWeight: FontWeight.w700),
                 ),
                 Text(
                   timeAgoLabel(w.createdAt),
                   style:
-                      const TextStyle(color: AppTheme.muted, fontSize: 12),
+                      TextStyle(color: AppTheme.muted, fontSize: 12),
                 ),
               ],
             ),
@@ -440,7 +440,7 @@ class _WalletScreenState extends State<WalletScreen> {
         children: [
           Icon(
             positive ? Icons.arrow_downward : Icons.arrow_upward,
-            color: positive ? AppTheme.accent : Colors.white54,
+            color: positive ? AppTheme.accent : AppTheme.text.withOpacity(0.54),
             size: 18,
           ),
           const SizedBox(width: 12),
@@ -450,13 +450,13 @@ class _WalletScreenState extends State<WalletScreen> {
               children: [
                 Text(
                   t.label,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                      color: AppTheme.text, fontWeight: FontWeight.w700),
                 ),
                 Text(
                   timeAgoLabel(t.createdAt),
                   style:
-                      const TextStyle(color: AppTheme.muted, fontSize: 12),
+                      TextStyle(color: AppTheme.muted, fontSize: 12),
                 ),
               ],
             ),
@@ -469,7 +469,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     ? '${positive ? '+' : ''}${formatCoins(t.amountCoins)} coins'
                     : '${positive ? '+' : ''}${formatPkr(t.amount)}',
                 style: TextStyle(
-                  color: positive ? AppTheme.accent : Colors.white,
+                  color: positive ? AppTheme.accent : AppTheme.text,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -486,12 +486,12 @@ class _WalletScreenState extends State<WalletScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white10,
+        color: AppTheme.hairline,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.white70, fontSize: 11),
+        style: TextStyle(color: AppTheme.text.withOpacity(0.7), fontSize: 11),
       ),
     );
   }
@@ -499,8 +499,8 @@ class _WalletScreenState extends State<WalletScreen> {
   Widget _sectionTitle(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        color: Colors.white,
+      style: TextStyle(
+        color: AppTheme.text,
         fontSize: 16,
         fontWeight: FontWeight.w800,
       ),
@@ -538,7 +538,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 Text(
                   'Available: ${formatPkr(balances.available)} • '
                   'Minimum: ${formatPkr(WalletRules.minWithdrawalPkr.toDouble())}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12.5),
                 ),
                 const SizedBox(height: 14),
@@ -576,7 +576,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Your request will be recorded as Pending review. '
                   'Withdrawals open after the Play Store launch — no '
                   'payout is sent before then.',

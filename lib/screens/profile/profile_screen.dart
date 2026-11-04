@@ -22,7 +22,7 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final uid = AuthService.instance.uid;
     if (uid == null) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
           child: Text('Please log in.',
               style: TextStyle(color: AppTheme.muted)),
@@ -94,17 +94,17 @@ class ProfileScreen extends StatelessWidget {
                   Center(
                     child: Text(
                       name,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
-                          color: Colors.white),
+                          color: AppTheme.text),
                     ),
                   ),
                   if (username.isNotEmpty)
                     Center(
                       child: Text(
                         '@$username',
-                        style: const TextStyle(color: AppTheme.muted),
+                        style: TextStyle(color: AppTheme.muted),
                       ),
                     ),
                   if (bio.isNotEmpty) ...[
@@ -114,7 +114,7 @@ class ProfileScreen extends StatelessWidget {
                       child: Text(
                         bio,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70),
+                        style: TextStyle(color: AppTheme.text.withOpacity(0.7)),
                       ),
                     ),
                   ],
@@ -163,9 +163,9 @@ class ProfileScreen extends StatelessWidget {
                       icon: const Icon(Icons.edit_outlined, size: 18),
                       label: const Text('Edit profile'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
+                        foregroundColor: AppTheme.text,
                         minimumSize: const Size.fromHeight(46),
-                        side: const BorderSide(color: Colors.white24),
+                        side: BorderSide(color: AppTheme.hairline),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
@@ -184,9 +184,9 @@ class ProfileScreen extends StatelessWidget {
                           size: 18),
                       label: const Text('Wallet'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
+                        foregroundColor: AppTheme.text,
                         minimumSize: const Size.fromHeight(46),
-                        side: const BorderSide(color: Colors.white24),
+                        side: BorderSide(color: AppTheme.hairline),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
@@ -216,7 +216,7 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 20),
-                  const Divider(height: 1, color: Colors.white10),
+                  Divider(height: 1, color: AppTheme.hairline),
                   if (vsnap.connectionState == ConnectionState.waiting)
                     const Padding(
                       padding: EdgeInsets.all(40),
@@ -225,7 +225,7 @@ class ProfileScreen extends StatelessWidget {
                               color: AppTheme.accent)),
                     )
                   else if (videos.isEmpty)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.all(40),
                       child: Center(
                         child: Text(
@@ -264,13 +264,13 @@ class ProfileScreen extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(value,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: Colors.white)),
+                color: AppTheme.text)),
         const SizedBox(height: 2),
         Text(label,
-            style: const TextStyle(fontSize: 12.5, color: AppTheme.muted)),
+            style: TextStyle(fontSize: 12.5, color: AppTheme.muted)),
       ],
     );
   }

@@ -48,18 +48,18 @@ Future<SoundsChoice?> showSoundsSheet(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
+                Padding(
                   padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: Text(
                     'Sounds',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: AppTheme.text,
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-                const Padding(
+                Padding(
                   padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
                   child: Text(
                     'Royalty-free tracks — free to use in your videos.',
@@ -71,21 +71,21 @@ Future<SoundsChoice?> showSoundsSheet(
                     shrinkWrap: true,
                     children: [
                       ListTile(
-                        leading: const CircleAvatar(
-                          backgroundColor: Colors.white12,
+                        leading: CircleAvatar(
+                          backgroundColor: AppTheme.hairline,
                           child: Icon(Icons.music_off,
-                              color: Colors.white70, size: 20),
+                              color: AppTheme.text.withOpacity(0.7), size: 20),
                         ),
-                        title: const Text('No sound',
-                            style: TextStyle(color: Colors.white)),
-                        subtitle: const Text('Original audio only',
+                        title: Text('No sound',
+                            style: TextStyle(color: AppTheme.text)),
+                        subtitle: Text('Original audio only',
                             style: TextStyle(color: AppTheme.muted)),
                         onTap: busyId != null
                             ? null
                             : () => Navigator.of(sheetCtx)
                                 .pop(const SoundsChoice.cleared()),
                       ),
-                      const Divider(color: Colors.white10, height: 1),
+                      Divider(color: AppTheme.hairline, height: 1),
                       for (final s in BuiltInSounds.all)
                         ListTile(
                           leading: Container(
@@ -110,7 +110,7 @@ Future<SoundsChoice?> showSoundsSheet(
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: Colors.white,
+                              color: AppTheme.text,
                               fontWeight: selectedId == s.id
                                   ? FontWeight.w800
                                   : FontWeight.w600,
@@ -118,7 +118,7 @@ Future<SoundsChoice?> showSoundsSheet(
                           ),
                           subtitle: Text(
                             '${s.artist} • ${s.durationLabel}',
-                            style: const TextStyle(color: AppTheme.muted),
+                            style: TextStyle(color: AppTheme.muted),
                           ),
                           trailing: selectedId == s.id
                               ? const Icon(Icons.check_circle,

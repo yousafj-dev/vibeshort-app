@@ -16,7 +16,7 @@ class CreatorDashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final uid = AuthService.instance.uid;
     if (uid == null) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
             child: Text('Please log in.',
                 style: TextStyle(color: AppTheme.muted))),
@@ -35,10 +35,10 @@ class CreatorDashboardScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              const Text(
+              Text(
                 'Your content at a glance',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: AppTheme.text,
                     fontSize: 17,
                     fontWeight: FontWeight.w800),
               ),
@@ -72,7 +72,7 @@ class CreatorDashboardScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 18),
-              const Text(
+              Text(
                 'Views count once per viewer per app session, and never for your own plays.',
                 style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
               ),
@@ -96,13 +96,13 @@ class CreatorDashboardScreen extends StatelessWidget {
             Icon(icon, color: AppTheme.accent, size: 24),
             const SizedBox(height: 10),
             Text(value,
-                style: const TextStyle(
-                    color: Colors.white,
+                style: TextStyle(
+                    color: AppTheme.text,
                     fontSize: 22,
                     fontWeight: FontWeight.w800)),
             const SizedBox(height: 3),
             Text(label,
-                style: const TextStyle(color: AppTheme.muted, fontSize: 12.5)),
+                style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
           ],
         ),
       ),

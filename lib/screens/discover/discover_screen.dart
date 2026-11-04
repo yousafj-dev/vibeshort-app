@@ -44,11 +44,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               decoration: InputDecoration(
                 hintText: 'Search users, videos, #hashtags',
                 prefixIcon:
-                    const Icon(Icons.search, color: AppTheme.muted),
+                    Icon(Icons.search, color: AppTheme.muted),
                 suffixIcon: _query.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.close,
+                        icon: Icon(Icons.close,
                             color: AppTheme.muted, size: 20),
                         onPressed: () {
                           _searchCtrl.clear();
@@ -93,18 +93,18 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         return ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: Text(
                 'Trending hashtags',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: AppTheme.text,
                     fontSize: 17,
                     fontWeight: FontWeight.w800),
               ),
             ),
             if (tags.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 24),
                 child: Text(
                   'No hashtags yet.\nAdd #tags to your video captions and they will trend here.',
@@ -129,21 +129,21 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           gradient: AppTheme.primaryGradient,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(
+        child: Center(
           child: Text('#',
               style: TextStyle(
-                  color: Colors.white,
+                  color: AppTheme.text,
                   fontSize: 20,
                   fontWeight: FontWeight.w800)),
         ),
       ),
       title: Text('#$tag',
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w700)),
+          style: TextStyle(
+              color: AppTheme.text, fontWeight: FontWeight.w700)),
       subtitle: Text('$count video${count == 1 ? '' : 's'}',
-          style: const TextStyle(color: AppTheme.muted, fontSize: 12.5)),
+          style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
       trailing:
-          const Icon(Icons.chevron_right, color: AppTheme.muted, size: 20),
+          Icon(Icons.chevron_right, color: AppTheme.muted, size: 20),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => HashtagVideosScreen(tag: tag)),
       ),
@@ -185,7 +185,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   child: Text(
                     'No results for "$query"',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppTheme.muted),
+                    style: TextStyle(color: AppTheme.muted),
                   ),
                 ),
               );
@@ -218,16 +218,16 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             u.photoUrl.isNotEmpty ? NetworkImage(u.photoUrl) : null,
         child: u.photoUrl.isEmpty
             ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700))
+                style: TextStyle(
+                    color: AppTheme.text, fontWeight: FontWeight.w700))
             : null,
       ),
       title: Text(name,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w700)),
+          style: TextStyle(
+              color: AppTheme.text, fontWeight: FontWeight.w700)),
       subtitle: u.username.isNotEmpty
           ? Text('@${u.username}',
-              style: const TextStyle(color: AppTheme.muted, fontSize: 12.5))
+              style: TextStyle(color: AppTheme.muted, fontSize: 12.5))
           : null,
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => PublicProfileScreen(uid: u.uid)),
@@ -247,8 +247,8 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
       child: Text(
         title,
-        style: const TextStyle(
-            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
+        style: TextStyle(
+            color: AppTheme.text, fontSize: 16, fontWeight: FontWeight.w800),
       ),
     );
   }

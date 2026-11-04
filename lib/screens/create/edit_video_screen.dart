@@ -392,7 +392,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   Widget build(BuildContext context) {
     final player = _player;
     return Scaffold(
-      backgroundColor: AppTheme.bg,
+      backgroundColor: AppTheme.bgDark,
       appBar: AppBar(
         title: const Text('Edit video'),
         actions: [
@@ -427,20 +427,20 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                 const SizedBox(height: 16),
                 _sectionLabel('Effects'),
                 const SizedBox(height: 2),
-                const Text(
+                Text(
                     'Grade effects preview live; the rest are applied '
                     'exactly when you post.',
-                    style: TextStyle(color: AppTheme.muted, fontSize: 12)),
+                    style: TextStyle(color: AppTheme.mutedDark, fontSize: 12)),
                 const SizedBox(height: 8),
                 _effectsRow(),
                 if (widget.faceTrack != null) ...[
                   const SizedBox(height: 16),
                   _sectionLabel('Face effect'),
                   const SizedBox(height: 2),
-                  const Text(
+                  Text(
                       'Tracked on your face while recording — the '
                       'sticker is baked into the video when you post.',
-                      style: TextStyle(color: AppTheme.muted, fontSize: 12)),
+                      style: TextStyle(color: AppTheme.mutedDark, fontSize: 12)),
                   const SizedBox(height: 8),
                   _faceRow(),
                 ],
@@ -452,8 +452,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                     _musicName != null) ...[
                   const SizedBox(height: 6),
                   Text('Music: $_musicName',
-                      style: const TextStyle(
-                          color: AppTheme.muted, fontSize: 12)),
+                      style: TextStyle(
+                          color: AppTheme.mutedDark, fontSize: 12)),
                 ],
                 const SizedBox(height: 16),
                 _sectionLabel('Text on video'),
@@ -491,7 +491,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                   const SizedBox(height: 16),
                   LinearProgressIndicator(
                     value: _progress > 0 ? _progress : null,
-                    backgroundColor: AppTheme.card,
+                    backgroundColor: AppTheme.cardDark,
                     color: AppTheme.accent,
                     minHeight: 8,
                   ),
@@ -500,7 +500,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                     'Uploading… ${(_progress * 100).round()}%',
                     textAlign: TextAlign.center,
                     style:
-                        const TextStyle(color: AppTheme.muted, fontSize: 13),
+                        TextStyle(color: AppTheme.mutedDark, fontSize: 13),
                   ),
                 ],
                 const SizedBox(height: 20),
@@ -585,8 +585,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('Start ${_fmt(_trimStartSec)}',
-                style: const TextStyle(
-                    color: AppTheme.muted, fontSize: 12.5)),
+                style: TextStyle(
+                    color: AppTheme.mutedDark, fontSize: 12.5)),
             Text(
               _trimActive
                   ? 'Keeping ${_fmt(_trimEndSec - _trimStartSec)} of ${_fmt(dur)}'
@@ -597,8 +597,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                   fontWeight: FontWeight.w600),
             ),
             Text('End ${_fmt(_trimEndSec)}',
-                style: const TextStyle(
-                    color: AppTheme.muted, fontSize: 12.5)),
+                style: TextStyle(
+                    color: AppTheme.mutedDark, fontSize: 12.5)),
           ],
         ),
       ],
@@ -639,7 +639,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       child: Container(
         height: 300,
         decoration: BoxDecoration(
-          color: AppTheme.card,
+          color: AppTheme.cardDark,
           borderRadius: BorderRadius.circular(16),
         ),
         clipBehavior: Clip.antiAlias,
@@ -728,9 +728,9 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
             selected: selected,
             onSelected: _posting ? null : (_) => _selectFilter(f),
             selectedColor: AppTheme.accent,
-            backgroundColor: AppTheme.card,
+            backgroundColor: AppTheme.cardDark,
             labelStyle: TextStyle(
-                color: selected ? Colors.white : AppTheme.muted,
+                color: selected ? Colors.white : AppTheme.mutedDark,
                 fontWeight: FontWeight.w600),
             side: BorderSide.none,
           );
@@ -761,7 +761,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: AppTheme.card,
+                      color: AppTheme.cardDark,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
                         color: selected
@@ -782,7 +782,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10.5,
-                      color: selected ? Colors.white : AppTheme.muted,
+                      color: selected ? Colors.white : AppTheme.mutedDark,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -815,7 +815,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: AppTheme.card,
+                  color: AppTheme.cardDark,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color:
@@ -834,7 +834,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 10.5,
-                  color: selected ? Colors.white : AppTheme.muted,
+                  color: selected ? Colors.white : AppTheme.mutedDark,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -880,11 +880,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           onSelected:
               _posting ? null : (_) => _setMusicMode(MusicMode.original),
           selectedColor: AppTheme.accent,
-          backgroundColor: AppTheme.card,
+          backgroundColor: AppTheme.cardDark,
           labelStyle: TextStyle(
               color: _musicMode == MusicMode.original
                   ? Colors.white
-                  : AppTheme.muted,
+                  : AppTheme.mutedDark,
               fontWeight: FontWeight.w600),
           side: BorderSide.none,
         ),
@@ -895,11 +895,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
               ? null
               : (_) => _setMusicMode(MusicMode.mute),
           selectedColor: AppTheme.accent,
-          backgroundColor: AppTheme.card,
+          backgroundColor: AppTheme.cardDark,
           labelStyle: TextStyle(
               color: _musicMode == MusicMode.mute
                   ? Colors.white
-                  : AppTheme.muted,
+                  : AppTheme.mutedDark,
               fontWeight: FontWeight.w600),
           side: BorderSide.none,
         ),
@@ -911,11 +911,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           backgroundColor:
               _musicMode == MusicMode.replace && _soundId != null
                   ? AppTheme.accent
-                  : AppTheme.card,
+                  : AppTheme.cardDark,
           labelStyle: TextStyle(
               color: _musicMode == MusicMode.replace && _soundId != null
                   ? Colors.white
-                  : AppTheme.muted,
+                  : AppTheme.mutedDark,
               fontWeight: FontWeight.w600),
           side: BorderSide.none,
         ),
@@ -926,11 +926,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           onPressed: _posting ? null : _pickMusic,
           backgroundColor: _musicMode == MusicMode.replace
               ? AppTheme.accent
-              : AppTheme.card,
+              : AppTheme.cardDark,
           labelStyle: TextStyle(
               color: _musicMode == MusicMode.replace
                   ? Colors.white
-                  : AppTheme.muted,
+                  : AppTheme.mutedDark,
               fontWeight: FontWeight.w600),
           side: BorderSide.none,
         ),
@@ -941,8 +941,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   Widget _positionRow() {
     return Row(
       children: [
-        const Text('Position:',
-            style: TextStyle(color: AppTheme.muted, fontSize: 13)),
+        Text('Position:',
+            style: TextStyle(color: AppTheme.mutedDark, fontSize: 13)),
         const SizedBox(width: 10),
         ...OverlayPosition.values.map((pos) {
           final selected = pos == _textPos;
@@ -959,9 +959,9 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
               onSelected:
                   _posting ? null : (_) => setState(() => _textPos = pos),
               selectedColor: AppTheme.accent,
-              backgroundColor: AppTheme.card,
+              backgroundColor: AppTheme.cardDark,
               labelStyle: TextStyle(
-                  color: selected ? Colors.white : AppTheme.muted,
+                  color: selected ? Colors.white : AppTheme.mutedDark,
                   fontWeight: FontWeight.w600),
               side: BorderSide.none,
             ),

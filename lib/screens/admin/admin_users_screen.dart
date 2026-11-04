@@ -63,8 +63,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
             child: TextField(
               onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
+              style: TextStyle(color: AppTheme.text),
+              decoration: InputDecoration(
                 hintText: 'Search name, username or email',
                 prefixIcon: Icon(Icons.search, color: AppTheme.muted),
               ),
@@ -95,7 +95,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                     return a.username.compareTo(b.username);
                   });
                 if (users.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text('No accounts match.',
                         style: TextStyle(color: AppTheme.muted)),
                   );
@@ -137,8 +137,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                         u.displayOrFallback.isNotEmpty
                             ? u.displayOrFallback[0].toUpperCase()
                             : '?',
-                        style: const TextStyle(
-                            color: Colors.white,
+                        style: TextStyle(
+                            color: AppTheme.text,
                             fontWeight: FontWeight.w800),
                       )
                     : null,
@@ -152,13 +152,13 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                       u.username.isNotEmpty
                           ? '@${u.username}'
                           : u.displayOrFallback,
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: AppTheme.text,
                           fontWeight: FontWeight.w700),
                     ),
                     if (u.email.isNotEmpty)
                       Text(u.email,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: AppTheme.muted, fontSize: 12.5)),
                   ],
                 ),
@@ -177,8 +177,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           if (u.isSuspended && u.suspensionReason.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text('Reason: ${u.suspensionReason}',
-                style: const TextStyle(
-                    color: Colors.white70, fontSize: 13)),
+                style: TextStyle(
+                    color: AppTheme.text.withOpacity(0.7), fontSize: 13)),
           ],
           if (!isMe) ...[
             const SizedBox(height: 10),
@@ -188,8 +188,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                 icon: const Icon(Icons.restart_alt, size: 17),
                 label: const Text('Restore account'),
                 style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white24)),
+                    foregroundColor: AppTheme.text,
+                    side: BorderSide(color: AppTheme.hairline)),
               )
             else
               OutlinedButton.icon(

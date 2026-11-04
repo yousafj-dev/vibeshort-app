@@ -100,7 +100,7 @@ class _InboxScreenState extends State<InboxScreen> {
             if (!n.read) _sessionUnread.add(n.id);
           }
           if (items.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Column(
@@ -112,7 +112,7 @@ class _InboxScreenState extends State<InboxScreen> {
                     Text(
                       'No notifications yet',
                       style: TextStyle(
-                          color: Colors.white,
+                          color: AppTheme.text,
                           fontSize: 18,
                           fontWeight: FontWeight.w700),
                     ),
@@ -159,8 +159,8 @@ class _InboxScreenState extends State<InboxScreen> {
                       n.actorName.isNotEmpty
                           ? n.actorName[0].toUpperCase()
                           : '?',
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          color: AppTheme.text, fontWeight: FontWeight.w700),
                     )
                   : null,
             ),
@@ -172,7 +172,7 @@ class _InboxScreenState extends State<InboxScreen> {
                   RichText(
                     text: TextSpan(
                       style:
-                          const TextStyle(color: Colors.white, fontSize: 14.5),
+                          TextStyle(color: AppTheme.text, fontSize: 14.5),
                       children: [
                         TextSpan(
                           text: n.actorName,
@@ -186,7 +186,7 @@ class _InboxScreenState extends State<InboxScreen> {
                   Text(
                     timeAgoLabel(n.createdAt),
                     style:
-                        const TextStyle(color: AppTheme.muted, fontSize: 12),
+                        TextStyle(color: AppTheme.muted, fontSize: 12),
                   ),
                 ],
               ),
@@ -204,8 +204,8 @@ class _InboxScreenState extends State<InboxScreen> {
                     width: 42,
                     height: 54,
                     color: AppTheme.card,
-                    child: const Icon(Icons.play_circle_outline,
-                        color: Colors.white38, size: 20),
+                    child: Icon(Icons.play_circle_outline,
+                        color: AppTheme.text.withOpacity(0.38), size: 20),
                   ),
                 ),
               ),

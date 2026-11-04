@@ -72,11 +72,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                       ? null
                       : (v) => setState(() => _on = v),
                   activeColor: AppTheme.accent,
-                  title: const Text('Maintenance notice',
+                  title: Text('Maintenance notice',
                       style: TextStyle(
-                          color: Colors.white,
+                          color: AppTheme.text,
                           fontWeight: FontWeight.w700)),
-                  subtitle: const Text(
+                  subtitle: Text(
                     'Shown as a banner to all users while ON.',
                     style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
                   ),
@@ -87,7 +87,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 controller: _noticeCtrl,
                 enabled: !_saving,
                 maxLines: 3,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: AppTheme.text),
                 decoration: const InputDecoration(
                   labelText: 'Notice text',
                   hintText:
@@ -107,7 +107,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                     : const Text('Save settings'),
               ),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Changes apply live — no app update needed. Every change is written to the audit log.',
                 style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
               ),

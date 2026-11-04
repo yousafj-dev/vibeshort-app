@@ -14,7 +14,7 @@ class QrCodeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final uid = AuthService.instance.uid;
     if (uid == null) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
             child: Text('Please log in.',
                 style: TextStyle(color: AppTheme.muted))),
@@ -59,26 +59,26 @@ class QrCodeScreen extends StatelessWidget {
                     child: photo.isEmpty
                         ? Text(
                             name.isNotEmpty ? name[0].toUpperCase() : '?',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.w800,
-                                color: Colors.white),
+                                color: AppTheme.text),
                           )
                         : null,
                   ),
                   const SizedBox(height: 10),
                   Text(
                     name,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: AppTheme.text,
                         fontSize: 19,
                         fontWeight: FontWeight.w800),
                   ),
                   if (username.isNotEmpty)
                     Text('@$username',
-                        style: const TextStyle(color: AppTheme.muted)),
+                        style: TextStyle(color: AppTheme.muted)),
                   const SizedBox(height: 14),
-                  const Text(
+                  Text(
                     'Anyone with VibeShort can open your profile from this code.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppTheme.muted),

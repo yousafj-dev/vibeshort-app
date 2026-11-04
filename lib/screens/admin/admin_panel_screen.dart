@@ -91,7 +91,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                   snap.error
                       .toString()
                       .replaceFirst('Exception: ', ''),
-                  style: const TextStyle(color: AppTheme.muted),
+                  style: TextStyle(color: AppTheme.muted),
                 );
               }
               final t = snap.data ?? const {};
@@ -173,14 +173,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(value,
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: AppTheme.text,
                   fontSize: 20,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 2),
           Text(label,
               style:
-                  const TextStyle(color: AppTheme.muted, fontSize: 12)),
+                  TextStyle(color: AppTheme.muted, fontSize: 12)),
         ],
       ),
     );
@@ -202,11 +202,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         child: ListTile(
           leading: Icon(icon, color: AppTheme.accent),
           title: Text(title,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  color: AppTheme.text, fontWeight: FontWeight.w700)),
           subtitle: Text(subtitle,
-              style: const TextStyle(color: AppTheme.muted, fontSize: 12.5)),
-          trailing: const Icon(Icons.chevron_right, color: AppTheme.muted),
+              style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
+          trailing: Icon(Icons.chevron_right, color: AppTheme.muted),
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => screen),
           ),

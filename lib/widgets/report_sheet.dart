@@ -37,14 +37,14 @@ Future<void> showReportSheet(
                 children: [
                   Text(
                     'Report $targetLabel',
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: AppTheme.text,
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Our team will review this report. Reports are private — the other user is not told who reported them.',
                     style: TextStyle(color: AppTheme.muted, fontSize: 13),
                   ),
@@ -57,8 +57,8 @@ Future<void> showReportSheet(
                           ? null
                           : (v) => setSheetState(() => selected = v ?? r),
                       title: Text(r,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 14.5)),
+                          style: TextStyle(
+                              color: AppTheme.text, fontSize: 14.5)),
                       activeColor: AppTheme.accent,
                       dense: true,
                       contentPadding: EdgeInsets.zero,

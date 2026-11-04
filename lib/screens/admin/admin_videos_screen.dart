@@ -86,7 +86,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
             byVideo.putIfAbsent(r.targetId, () => []).add(r);
           }
           if (byVideo.isEmpty) {
-            return const Center(
+            return Center(
               child: Text('No reported videos.',
                   style: TextStyle(color: AppTheme.muted)),
             );
@@ -139,7 +139,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
       ),
       child: Text(
         'Video $id — $total report(s), $open open. The video document no longer exists.',
-        style: const TextStyle(color: AppTheme.muted),
+        style: TextStyle(color: AppTheme.muted),
       ),
     );
   }
@@ -180,32 +180,32 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                           : video.caption,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: AppTheme.text,
                           fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Text('by ',
+                        Text('by ',
                             style: TextStyle(
                                 color: AppTheme.muted, fontSize: 12.5)),
                         UserNameText(video.uid,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: AppTheme.muted, fontSize: 12.5)),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Text(
                       '$open open • ${rs.length} total report(s)',
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AppTheme.muted, fontSize: 12.5),
                     ),
                     Text(
                       'Reasons: $reasons',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AppTheme.muted, fontSize: 12.5),
                     ),
                   ],
@@ -231,8 +231,8 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                 icon: const Icon(Icons.play_arrow, size: 17),
                 label: const Text('Watch'),
                 style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white24)),
+                    foregroundColor: AppTheme.text,
+                    side: BorderSide(color: AppTheme.hairline)),
               ),
               if (!video.isRemoved) ...[
                 ElevatedButton(

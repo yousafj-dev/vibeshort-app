@@ -30,7 +30,7 @@ Future<String?> promptText(
         autofocus: true,
         maxLines: 3,
         minLines: 1,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: AppTheme.text),
         decoration: InputDecoration(labelText: label, hintText: hint),
       ),
       actions: [

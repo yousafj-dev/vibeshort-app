@@ -36,7 +36,7 @@ class BlockedAccountsScreen extends StatelessWidget {
           }
           final users = snap.data ?? const <VibeUser>[];
           if (users.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Text(
@@ -59,20 +59,20 @@ class BlockedAccountsScreen extends StatelessWidget {
                       u.photoUrl.isNotEmpty ? NetworkImage(u.photoUrl) : null,
                   child: u.photoUrl.isEmpty
                       ? Text(name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                              color: Colors.white,
+                          style: TextStyle(
+                              color: AppTheme.text,
                               fontWeight: FontWeight.w700))
                       : null,
                 ),
                 title: Text(name,
-                    style: const TextStyle(color: Colors.white)),
+                    style: TextStyle(color: AppTheme.text)),
                 subtitle: Text('@${u.username}',
-                    style: const TextStyle(color: AppTheme.muted)),
+                    style: TextStyle(color: AppTheme.muted)),
                 trailing: OutlinedButton(
                   onPressed: () => _unblock(context, u),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white24),
+                    foregroundColor: AppTheme.text,
+                    side: BorderSide(color: AppTheme.hairline),
                   ),
                   child: const Text('Unblock'),
                 ),

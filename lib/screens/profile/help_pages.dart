@@ -22,16 +22,16 @@ class _StaticPage extends StatelessWidget {
           for (final (heading, body) in sections) ...[
             Text(
               heading,
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: AppTheme.text,
                   fontSize: 15.5,
                   fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Text(
               body,
-              style: const TextStyle(
-                  color: Colors.white70, height: 1.5, fontSize: 14),
+              style: TextStyle(
+                  color: AppTheme.text.withOpacity(0.7), height: 1.5, fontSize: 14),
             ),
             const SizedBox(height: 20),
           ],

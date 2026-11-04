@@ -169,34 +169,35 @@ class _AuthScreenState extends State<AuthScreen> {
                   width: 76,
                   height: 76,
                   decoration: BoxDecoration(
-                    gradient: AppTheme.primaryGradient,
+                    // Logo 1 "Play-V" lives on its brand-dark tile
+                    // in both themes (same treatment as the
+                    // launcher icon, build 16).
+                    color: AppTheme.bgDark,
                     borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: AppTheme.hairline),
                   ),
-                  child: const Center(
-                    child: Text(
-                      'V',
-                      style: TextStyle(
-                        fontSize: 42,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
+                  child: Center(
+                    child: Image.asset(
+                      'assets/images/logo_mark.png',
+                      width: 54,
+                      height: 50,
                     ),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
-              const Center(
+              Center(
                 child: Text(
                   'VibeShort',
                   style: TextStyle(
                     fontSize: 30,
                     fontWeight: FontWeight.w900,
-                    color: Colors.white,
+                    color: AppTheme.text,
                   ),
                 ),
               ),
               const SizedBox(height: 6),
-              const Center(
+              Center(
                 child: Text(
                   'Watch, create, feel the vibe',
                   style: TextStyle(color: AppTheme.muted, fontSize: 14),

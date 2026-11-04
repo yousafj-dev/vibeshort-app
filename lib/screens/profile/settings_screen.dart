@@ -157,10 +157,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return TextField(
       controller: c,
       obscureText: true,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: AppTheme.text),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: AppTheme.muted),
+        labelStyle: TextStyle(color: AppTheme.muted),
       ),
     );
   }
@@ -198,7 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
                 'Enter your current password to permanently delete this account.',
                 style: TextStyle(color: AppTheme.muted)),
             const SizedBox(height: 10),
@@ -283,7 +283,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 groupValue: current,
                 activeColor: AppTheme.accent,
                 title: Text(option,
-                    style: const TextStyle(color: Colors.white)),
+                    style: TextStyle(color: AppTheme.text)),
                 onChanged: (v) => Navigator.of(ctx).pop(v),
               ),
           ],
@@ -295,6 +295,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Dark / Light mode (build 16). A DEVICE preference (this
+  /// phone's look), so it lives in PrefsService /
+  /// SharedPreferences — not on the account doc — applies
+  /// instantly app-wide via the theme notifier in main, and is
+  /// already loaded before the first frame on the next launch.
+  Future<void> _pickTheme() async {
+    final choice = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        title: const Text('Theme'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (label, value) in const [
+              ('Dark', false),
+              ('Light', true),
+            ])
+              RadioListTile<bool>(
+                value: value,
+                groupValue: PrefsService.lightTheme,
+                activeColor: AppTheme.accent,
+                title: Text(label,
+                    style: TextStyle(color: AppTheme.text)),
+                onChanged: (v) => Navigator.of(ctx).pop(v),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && choice != PrefsService.lightTheme) {
+      await PrefsService.setLightTheme(choice);
+    }
+  }
+
   // ---------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------
@@ -303,7 +338,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final uid = AuthService.instance.uid;
     if (uid == null) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
             child: Text('Please log in.',
                 style: TextStyle(color: AppTheme.muted))),
@@ -319,6 +354,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
             children: [
+              _group('APPEARANCE', [
+                _row(
+                  icon: Icons.dark_mode_outlined,
+                  label: 'Theme',
+                  value: PrefsService.lightTheme ? 'Light' : 'Dark',
+                  onTap: _pickTheme,
+                ),
+              ]),
               _group('ACCOUNT', [
                 _row(
                   icon: Icons.badge_outlined,
@@ -353,11 +396,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ]),
               _group('PRIVACY', [
                 SwitchListTile(
-                  secondary: const Icon(Icons.lock_outline,
-                      color: Colors.white),
-                  title: const Text('Private account',
-                      style: TextStyle(color: Colors.white)),
-                  subtitle: const Text(
+                  secondary: Icon(Icons.lock_outline,
+                      color: AppTheme.text),
+                  title: Text('Private account',
+                      style: TextStyle(color: AppTheme.text)),
+                  subtitle: Text(
                       'Only your followers see your videos in feeds and Discover',
                       style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
                   value: profile?.isPrivate ?? false,
@@ -417,11 +460,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ]),
               _group('CACHE & DATA', [
                 SwitchListTile(
-                  secondary: const Icon(Icons.data_saver_on_outlined,
-                      color: Colors.white),
-                  title: const Text('Data Saver',
-                      style: TextStyle(color: Colors.white)),
-                  subtitle: const Text(
+                  secondary: Icon(Icons.data_saver_on_outlined,
+                      color: AppTheme.text),
+                  title: Text('Data Saver',
+                      style: TextStyle(color: AppTheme.text)),
+                  subtitle: Text(
                       'Play a lighter 540p stream in the feed',
                       style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
                   value: _dataSaver,
@@ -537,7 +580,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title,
-            style: const TextStyle(
+            style: TextStyle(
                 color: AppTheme.muted,
                 fontSize: 12.5,
                 fontWeight: FontWeight.w800,
@@ -564,7 +607,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
     Widget? trailing,
   }) {
-    final color = danger ? const Color(0xFFFF5C7A) : Colors.white;
+    final color = danger ? const Color(0xFFFF5C7A) : AppTheme.text;
     return ListTile(
       leading: Icon(icon, color: color),
       title: Text(label, style: TextStyle(color: color)),
@@ -572,13 +615,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? null
           : Text(subtitle,
               style:
-                  const TextStyle(color: AppTheme.muted, fontSize: 12.5)),
+                  TextStyle(color: AppTheme.muted, fontSize: 12.5)),
       trailing: trailing ??
           (value != null
               ? Text(value,
-                  style: const TextStyle(color: AppTheme.muted))
+                  style: TextStyle(color: AppTheme.muted))
               : (onTap != null
-                  ? const Icon(Icons.chevron_right, color: AppTheme.muted)
+                  ? Icon(Icons.chevron_right, color: AppTheme.muted)
                   : null)),
       onTap: onTap,
     );
@@ -591,8 +634,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String field,
   }) {
     return SwitchListTile(
-      secondary: Icon(icon, color: Colors.white),
-      title: Text(label, style: const TextStyle(color: Colors.white)),
+      secondary: Icon(icon, color: AppTheme.text),
+      title: Text(label, style: TextStyle(color: AppTheme.text)),
       value: value,
       activeColor: AppTheme.accent,
       onChanged: (v) => _setPref({field: v}),
@@ -631,17 +674,17 @@ class _AccountInfoScreen extends StatelessWidget {
                 for (final (label, value) in rows)
                   ListTile(
                     title: Text(label,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AppTheme.muted, fontSize: 13)),
                     subtitle: Text(value,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 15)),
+                        style: TextStyle(
+                            color: AppTheme.text, fontSize: 15)),
                   ),
               ],
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'To change your name, username or photo, use Edit profile.',
             style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
           ),

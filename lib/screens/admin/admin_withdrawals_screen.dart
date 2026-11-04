@@ -70,7 +70,7 @@ class _AdminWithdrawalsScreenState extends State<AdminWithdrawalsScreen> {
           }
           final list = snap.data ?? const <VibeWithdrawal>[];
           if (list.isEmpty) {
-            return const Center(
+            return Center(
               child: Text('No withdrawal requests yet.',
                   style: TextStyle(color: AppTheme.muted)),
             );
@@ -106,8 +106,8 @@ class _AdminWithdrawalsScreenState extends State<AdminWithdrawalsScreen> {
             children: [
               Text(
                 formatPkr(w.amount),
-                style: const TextStyle(
-                    color: Colors.white,
+                style: TextStyle(
+                    color: AppTheme.text,
                     fontSize: 17,
                     fontWeight: FontWeight.w800),
               ),
@@ -118,23 +118,23 @@ class _AdminWithdrawalsScreenState extends State<AdminWithdrawalsScreen> {
           const SizedBox(height: 6),
           Row(
             children: [
-              const Text('User: ',
+              Text('User: ',
                   style: TextStyle(color: AppTheme.muted, fontSize: 13)),
               UserNameText(w.userId,
-                  style: const TextStyle(
-                      color: Colors.white70, fontSize: 13)),
+                  style: TextStyle(
+                      color: AppTheme.text.withOpacity(0.7), fontSize: 13)),
             ],
           ),
           const SizedBox(height: 2),
           Text(
             '${w.payoutMethod} • ${w.payoutAccount}',
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+            style: TextStyle(color: AppTheme.text.withOpacity(0.7), fontSize: 13),
           ),
           const SizedBox(height: 2),
           Text(
             'Requested ${fmtDate(w.createdAt)}'
             '${w.reviewedAt != null ? ' • Reviewed ${fmtDate(w.reviewedAt!)}' : ''}',
-            style: const TextStyle(color: AppTheme.muted, fontSize: 12.5),
+            style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
           ),
           if (pending) ...[
             const SizedBox(height: 10),

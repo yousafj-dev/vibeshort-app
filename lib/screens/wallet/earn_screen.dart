@@ -55,7 +55,7 @@ class _EarnScreenState extends State<EarnScreen> {
   Widget build(BuildContext context) {
     final uid = AuthService.instance.uid;
     if (uid == null) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
           child:
               Text('Please log in.', style: TextStyle(color: AppTheme.muted)),
@@ -174,14 +174,14 @@ class _EarnScreenState extends State<EarnScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Daily check-in',
                   style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w700),
+                      color: AppTheme.text, fontWeight: FontWeight.w700),
                 ),
                 Text(
                   'Get ${CoinRules.dailyCheckInCoins} coins every day.',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12.5),
                 ),
               ],
@@ -192,12 +192,12 @@ class _EarnScreenState extends State<EarnScreen> {
             builder: (context, snap) {
               final claimed = snap.data ?? false;
               if (claimed) {
-                return const Chip(
-                  avatar: Icon(Icons.check, size: 16, color: Colors.white70),
+                return Chip(
+                  avatar: Icon(Icons.check, size: 16, color: AppTheme.text.withOpacity(0.7)),
                   label: Text('Claimed today'),
-                  backgroundColor: Colors.white10,
+                  backgroundColor: AppTheme.hairline,
                   labelStyle:
-                      TextStyle(color: Colors.white70, fontSize: 12),
+                      TextStyle(color: AppTheme.text.withOpacity(0.7), fontSize: 12),
                   side: BorderSide.none,
                 );
               }
@@ -242,7 +242,7 @@ class _EarnScreenState extends State<EarnScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: Colors.white10,
+                      color: AppTheme.hairline,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -250,8 +250,8 @@ class _EarnScreenState extends State<EarnScreen> {
                         Expanded(
                           child: Text(
                             code.isEmpty ? '…' : code,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: AppTheme.text,
                               fontSize: 20,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.5,
@@ -259,8 +259,8 @@ class _EarnScreenState extends State<EarnScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.copy_outlined,
-                              color: Colors.white70, size: 20),
+                          icon: Icon(Icons.copy_outlined,
+                              color: AppTheme.text.withOpacity(0.7), size: 20),
                           onPressed: code.isEmpty
                               ? null
                               : () async {
@@ -321,8 +321,8 @@ class _EarnScreenState extends State<EarnScreen> {
       children: [
         Text(
           value,
-          style: const TextStyle(
-              color: Colors.white,
+          style: TextStyle(
+              color: AppTheme.text,
               fontSize: 17,
               fontWeight: FontWeight.w800),
         ),
@@ -330,7 +330,7 @@ class _EarnScreenState extends State<EarnScreen> {
         Text(
           label,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppTheme.muted, fontSize: 11.5),
+          style: TextStyle(color: AppTheme.muted, fontSize: 11.5),
         ),
       ],
     );
@@ -377,8 +377,8 @@ class _EarnScreenState extends State<EarnScreen> {
                     Expanded(
                       child: Text(
                         s.$2,
-                        style: const TextStyle(
-                            color: Colors.white70,
+                        style: TextStyle(
+                            color: AppTheme.text.withOpacity(0.7),
                             fontSize: 13,
                             height: 1.4),
                       ),
@@ -402,7 +402,7 @@ class _EarnScreenState extends State<EarnScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.info_outline, color: AppTheme.accent, size: 20),
@@ -416,7 +416,7 @@ class _EarnScreenState extends State<EarnScreen> {
                   'Rs 500 (5,000 coins) to Easypaisa / JazzCash. '
                   'Earnings are never guaranteed.',
                   style: TextStyle(
-                      color: Colors.white70, fontSize: 13, height: 1.4),
+                      color: AppTheme.text.withOpacity(0.7), fontSize: 13, height: 1.4),
                 ),
               ),
             ],
@@ -437,8 +437,8 @@ class _EarnScreenState extends State<EarnScreen> {
   Widget _sectionTitle(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        color: Colors.white,
+      style: TextStyle(
+        color: AppTheme.text,
         fontSize: 16,
         fontWeight: FontWeight.w800,
       ),

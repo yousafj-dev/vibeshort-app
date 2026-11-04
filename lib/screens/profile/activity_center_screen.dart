@@ -66,7 +66,7 @@ class _VideoList extends StatelessWidget {
               child: Text(
                 emptyText,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppTheme.muted),
+                style: TextStyle(color: AppTheme.muted),
               ),
             ),
           );

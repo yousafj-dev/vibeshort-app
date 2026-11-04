@@ -79,19 +79,19 @@ class _UploadScreenState extends State<UploadScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.video_call_outlined,
+            Icon(Icons.video_call_outlined,
                 size: 64, color: AppTheme.muted),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Create a video',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: Colors.white,
+                  color: AppTheme.text,
                   fontSize: 20,
                   fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Record with live filters and effects, or pick a clip from '
               'your gallery (up to 60 seconds) and edit it before posting.',
               textAlign: TextAlign.center,
@@ -109,9 +109,9 @@ class _UploadScreenState extends State<UploadScreen> {
               icon: const Icon(Icons.photo_library_outlined),
               label: const Text('Pick from gallery'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
+                foregroundColor: AppTheme.text,
                 minimumSize: const Size.fromHeight(52),
-                side: const BorderSide(color: Colors.white24),
+                side: BorderSide(color: AppTheme.hairline),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),

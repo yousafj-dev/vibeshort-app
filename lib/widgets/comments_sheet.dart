@@ -46,23 +46,23 @@ class _CommentsSheetState extends State<CommentsSheet> {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Container(
       height: MediaQuery.of(context).size.height * 0.68,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.card,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 14),
             child: Text(
               'Comments',
               style: TextStyle(
-                  color: Colors.white,
+                  color: AppTheme.text,
                   fontSize: 16,
                   fontWeight: FontWeight.w700),
             ),
           ),
-          const Divider(height: 1, color: Colors.white12),
+          Divider(height: 1, color: AppTheme.hairline),
           Expanded(
             child: StreamBuilder(
               stream: FirestoreService.instance.comments(widget.video.id),
@@ -74,7 +74,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                 }
                 final comments = snap.data ?? const [];
                 if (comments.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
                       'No comments yet.\nBe the first to comment!',
                       textAlign: TextAlign.center,
@@ -112,7 +112,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                               children: [
                                 Text(
                                   '@${c.username}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: AppTheme.muted,
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w600),
@@ -120,8 +120,8 @@ class _CommentsSheetState extends State<CommentsSheet> {
                                 const SizedBox(height: 2),
                                 Text(
                                   c.text,
-                                  style: const TextStyle(
-                                      color: Colors.white, fontSize: 14.5),
+                                  style: TextStyle(
+                                      color: AppTheme.text, fontSize: 14.5),
                                 ),
                               ],
                             ),
@@ -163,7 +163,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
             ),
           ),
           if (AuthService.instance.uid == null)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(bottom: 10),
               child: Text('Please log in to comment.',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12)),

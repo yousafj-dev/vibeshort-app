@@ -26,7 +26,7 @@ class HashtagVideosScreen extends StatelessWidget {
           }
           final videos = snap.data ?? const <VibeVideo>[];
           if (videos.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
                 'No videos with this hashtag yet.',
                 style: TextStyle(color: AppTheme.muted),
@@ -42,7 +42,7 @@ class HashtagVideosScreen extends StatelessWidget {
                   child: Text(
                     '${videos.length} video${videos.length == 1 ? '' : 's'}',
                     style:
-                        const TextStyle(color: AppTheme.muted, fontSize: 13),
+                        TextStyle(color: AppTheme.muted, fontSize: 13),
                   ),
                 ),
                 VideoGrid(videos: videos),

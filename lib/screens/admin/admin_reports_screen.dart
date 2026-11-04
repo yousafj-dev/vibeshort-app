@@ -68,7 +68,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
           }
           final reports = snap.data ?? const <VibeReport>[];
           if (reports.isEmpty) {
-            return const Center(
+            return Center(
               child: Text('No reports yet.',
                   style: TextStyle(color: AppTheme.muted)),
             );
@@ -111,8 +111,8 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
               const SizedBox(width: 8),
               Text(
                 '${r.targetLabel} report',
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                    color: AppTheme.text, fontWeight: FontWeight.w700),
               ),
               const Spacer(),
               StatusChip(
@@ -126,19 +126,19 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
           ),
           const SizedBox(height: 8),
           Text('Reason: ${r.reason}',
-              style: const TextStyle(color: Colors.white)),
+              style: TextStyle(color: AppTheme.text)),
           const SizedBox(height: 4),
           Row(
             children: [
-              const Text('Reported by ',
+              Text('Reported by ',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
               UserNameText(r.reporterId,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12.5)),
-              const Text(' • ',
+              Text(' • ',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
               Text(fmtDate(r.createdAt),
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12.5)),
             ],
           ),
@@ -146,11 +146,11 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Text('Target user: ',
+                Text('Target user: ',
                     style:
                         TextStyle(color: AppTheme.muted, fontSize: 12.5)),
                 UserNameText(r.targetId,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.muted, fontSize: 12.5)),
               ],
             ),
@@ -158,8 +158,8 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
           if (!r.isOpen && r.resolution.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text('Decision: ${r.resolution}',
-                style: const TextStyle(
-                    color: Colors.white70, fontSize: 13)),
+                style: TextStyle(
+                    color: AppTheme.text.withOpacity(0.7), fontSize: 13)),
           ],
           const SizedBox(height: 10),
           Wrap(
@@ -171,8 +171,8 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                   icon: const Icon(Icons.play_arrow, size: 17),
                   label: const Text('View video'),
                   style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white24)),
+                      foregroundColor: AppTheme.text,
+                      side: BorderSide(color: AppTheme.hairline)),
                 ),
               if (r.isOpen) ...[
                 ElevatedButton(
@@ -184,9 +184,9 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
                 OutlinedButton(
                   onPressed: _busy ? null : () => _decide(r, dismiss: true),
                   style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
+                      foregroundColor: AppTheme.text,
                       minimumSize: const Size(0, 40),
-                      side: const BorderSide(color: Colors.white24)),
+                      side: BorderSide(color: AppTheme.hairline)),
                   child: const Text('Dismiss'),
                 ),
               ],

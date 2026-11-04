@@ -101,14 +101,23 @@ class VibeShortApp extends StatelessWidget {
       // the splash gate decides where to route.
       lazy: false,
       create: (_) => AuthService.instance..init(),
-      child: MaterialApp(
-        title: 'VibeShort',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark(),
-        // Feed cards subscribe to this observer so playback
-        // pauses while another page covers the feed.
-        navigatorObservers: [appRouteObserver],
-        home: const SplashScreen(),
+      child: ValueListenableBuilder<bool>(
+        // Dark / Light mode (build 16): the persisted choice is
+        // loaded into PrefsService before runApp, so the first
+        // frame already has the right theme; toggling it in
+        // Settings rebuilds MaterialApp (and with it the whole
+        // tree, whose chrome colors read AppTheme's mode-aware
+        // getters at build time).
+        valueListenable: PrefsService.themeNotifier,
+        builder: (context, light, _) => MaterialApp(
+          title: 'VibeShort',
+          debugShowCheckedModeBanner: false,
+          theme: light ? AppTheme.light() : AppTheme.dark(),
+          // Feed cards subscribe to this observer so playback
+          // pauses while another page covers the feed.
+          navigatorObservers: [appRouteObserver],
+          home: const SplashScreen(),
+        ),
       ),
     );
   }

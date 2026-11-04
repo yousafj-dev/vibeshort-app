@@ -106,7 +106,13 @@ class _MainShellState extends State<MainShell> {
               width: 46,
               height: 32,
               decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
+                // Solid BLACK create button in both themes
+                // (build 16, user-approved) — the white glyph
+                // stays clearly visible on it. A faint hairline
+                // border keeps the pill defined against the
+                // near-black dark nav bar.
+                color: Colors.black,
+                border: Border.all(color: AppTheme.hairline),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.add, color: Colors.white, size: 22),
@@ -185,10 +191,10 @@ class _MainShellState extends State<MainShell> {
             children: [
               const Icon(Icons.block, size: 64, color: Color(0xFFFF5C7A)),
               const SizedBox(height: 18),
-              const Text(
+              Text(
                 'Account suspended',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: AppTheme.text,
                     fontSize: 22,
                     fontWeight: FontWeight.w800),
               ),
@@ -198,10 +204,10 @@ class _MainShellState extends State<MainShell> {
                     ? 'Reason: ${profile.suspensionReason}'
                     : 'Your account has been suspended by the VibeShort team for breaking the community rules.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppTheme.muted, height: 1.45),
+                style: TextStyle(color: AppTheme.muted, height: 1.45),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'While suspended you cannot watch, post or interact. If you think this is a mistake, contact the VibeShort team.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: AppTheme.muted, height: 1.45),
@@ -221,7 +227,7 @@ class _MainShellState extends State<MainShell> {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFFF5C7A),
                   minimumSize: const Size(180, 48),
-                  side: const BorderSide(color: Colors.white24),
+                  side: BorderSide(color: AppTheme.hairline),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),

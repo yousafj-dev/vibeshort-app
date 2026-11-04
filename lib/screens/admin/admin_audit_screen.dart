@@ -23,7 +23,7 @@ class AdminAuditScreen extends StatelessWidget {
           }
           final logs = snap.data ?? const <VibeAuditLog>[];
           if (logs.isEmpty) {
-            return const Center(
+            return Center(
               child: Text('No admin actions recorded yet.',
                   style: TextStyle(color: AppTheme.muted)),
             );
@@ -57,39 +57,39 @@ class AdminAuditScreen extends StatelessWidget {
               Expanded(
                 child: Text(
                   log.actionLabel,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                      color: AppTheme.text, fontWeight: FontWeight.w700),
                 ),
               ),
               Text(fmtDate(log.createdAt),
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12)),
             ],
           ),
           const SizedBox(height: 6),
           Wrap(
             children: [
-              const Text('Admin: ',
+              Text('Admin: ',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
               UserNameText(log.adminId,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12.5)),
-              const Text('  •  Target: ',
+              Text('  •  Target: ',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12.5)),
               Text('${log.targetType} ',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12.5)),
               if (log.targetType == 'user' ||
                   log.targetType == 'referral')
                 UserNameText(log.targetId,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.muted, fontSize: 12.5))
               else
                 Text(
                   log.targetId.length > 18
                       ? '${log.targetId.substring(0, 18)}…'
                       : log.targetId,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.muted, fontSize: 12.5),
                 ),
             ],
@@ -97,8 +97,8 @@ class AdminAuditScreen extends StatelessWidget {
           if (log.reason.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text('Reason: ${log.reason}',
-                style: const TextStyle(
-                    color: Colors.white70, fontSize: 13)),
+                style: TextStyle(
+                    color: AppTheme.text.withOpacity(0.7), fontSize: 13)),
           ],
         ],
       ),

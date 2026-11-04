@@ -180,8 +180,8 @@ class _FeedPaneState extends State<_FeedPane> {
                         ? 'Follow creators to see their videos here'
                         : 'No videos yet',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: AppTheme.text,
                         fontSize: 18,
                         fontWeight: FontWeight.w700),
                   ),
@@ -191,7 +191,7 @@ class _FeedPaneState extends State<_FeedPane> {
                         ? 'Tap a creator\'s avatar in the feed and hit Follow.'
                         : 'Tap the + button below to post the first video.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: AppTheme.muted),
+                    style: TextStyle(color: AppTheme.muted),
                   ),
                 ],
               ),

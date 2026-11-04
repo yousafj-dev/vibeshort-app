@@ -37,7 +37,7 @@ class PublicProfileScreen extends StatelessWidget {
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           if (profile == null) {
-            return const Center(
+            return Center(
               child: Text('This profile is not available yet.',
                   style: TextStyle(color: AppTheme.muted)),
             );
@@ -73,15 +73,15 @@ class PublicProfileScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   Center(
                     child: Text(name,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: Colors.white)),
+                            color: AppTheme.text)),
                   ),
                   if (profile.username.isNotEmpty)
                     Center(
                       child: Text('@${profile.username}',
-                          style: const TextStyle(color: AppTheme.muted)),
+                          style: TextStyle(color: AppTheme.muted)),
                     ),
                   if (profile.bio.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -90,7 +90,7 @@ class PublicProfileScreen extends StatelessWidget {
                       child: Text(
                         profile.bio,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.white70),
+                        style: TextStyle(color: AppTheme.text.withOpacity(0.7)),
                       ),
                     ),
                   ],
@@ -142,7 +142,7 @@ class PublicProfileScreen extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 20),
-                  const Divider(height: 1, color: Colors.white10),
+                  Divider(height: 1, color: AppTheme.hairline),
                   _videosSection(context, profile, videos, isMe),
                 ],
               );
@@ -159,7 +159,7 @@ class PublicProfileScreen extends StatelessWidget {
       builder: (context, snap) {
         final blocked = snap.data ?? false;
         return PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.white),
+          icon: Icon(Icons.more_vert, color: AppTheme.text),
           color: AppTheme.card,
           onSelected: (value) async {
             if (value == 'report') {
@@ -201,15 +201,15 @@ class PublicProfileScreen extends StatelessWidget {
             }
           },
           itemBuilder: (ctx) => [
-            const PopupMenuItem(
+            PopupMenuItem(
               value: 'report',
               child: Text('Report user',
-                  style: TextStyle(color: Colors.white)),
+                  style: TextStyle(color: AppTheme.text)),
             ),
             PopupMenuItem(
               value: blocked ? 'unblock' : 'block',
               child: Text(blocked ? 'Unblock user' : 'Block user',
-                  style: const TextStyle(color: Colors.white)),
+                  style: TextStyle(color: AppTheme.text)),
             ),
           ],
         );
@@ -222,13 +222,13 @@ class PublicProfileScreen extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(value,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: Colors.white)),
+                color: AppTheme.text)),
         const SizedBox(height: 2),
         Text(label,
-            style: const TextStyle(fontSize: 12.5, color: AppTheme.muted)),
+            style: TextStyle(fontSize: 12.5, color: AppTheme.muted)),
       ],
     );
   }
@@ -255,7 +255,7 @@ class PublicProfileScreen extends StatelessWidget {
       stream: FirestoreService.instance.isFollowing(profile.uid),
       builder: (context, snap) {
         if (snap.data == true) return _gridOrEmpty(context, videos);
-        return const Padding(
+        return Padding(
           padding: EdgeInsets.all(40),
           child: Center(
             child: Column(
@@ -266,7 +266,7 @@ class PublicProfileScreen extends StatelessWidget {
                 Text(
                   'This account is private',
                   style: TextStyle(
-                      color: Colors.white,
+                      color: AppTheme.text,
                       fontSize: 16,
                       fontWeight: FontWeight.w700),
                 ),
@@ -286,7 +286,7 @@ class PublicProfileScreen extends StatelessWidget {
 
   Widget _gridOrEmpty(BuildContext context, List<VibeVideo> videos) {
     if (videos.isEmpty) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.all(40),
         child: Center(
           child: Text('No videos yet.',
@@ -354,8 +354,8 @@ class _FollowButton extends StatelessWidget {
               ? OutlinedButton(
                   onPressed: () => _set(context, false),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white24),
+                    foregroundColor: AppTheme.text,
+                    side: BorderSide(color: AppTheme.hairline),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),

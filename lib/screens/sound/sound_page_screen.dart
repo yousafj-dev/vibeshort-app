@@ -167,7 +167,7 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
       body: Column(
         children: [
           _header(),
-          const Divider(color: Colors.white10, height: 1),
+          Divider(color: AppTheme.hairline, height: 1),
           Expanded(child: _videosArea()),
           _useButton(),
         ],
@@ -195,8 +195,8 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
                   _title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: AppTheme.text,
                     fontSize: 19,
                     fontWeight: FontWeight.w800,
                   ),
@@ -207,7 +207,7 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
                     _librarySound == null
                         ? 'VibeShort Sounds'
                         : 'VibeShort Sounds • ${_librarySound!.artist} • ${_librarySound!.durationLabel}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.muted, fontSize: 13),
                   )
                 else if (anchor != null)
@@ -223,8 +223,8 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
                             '@${anchor.username}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: AppTheme.text,
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
@@ -238,7 +238,7 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
                     _resolvingAnchor
                         ? 'Loading…'
                         : widget.video.feedSoundLabel,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.muted, fontSize: 13),
                   ),
               ],
@@ -320,7 +320,7 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
     }
     final all = [...lead, ...videos];
     if (all.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'No videos with this sound yet.',
           style: TextStyle(color: AppTheme.muted),
@@ -335,7 +335,7 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
             child: Text(
               '${all.length} video${all.length == 1 ? '' : 's'}',
-              style: const TextStyle(color: AppTheme.muted, fontSize: 13),
+              style: TextStyle(color: AppTheme.muted, fontSize: 13),
             ),
           ),
           VideoGrid(videos: all),

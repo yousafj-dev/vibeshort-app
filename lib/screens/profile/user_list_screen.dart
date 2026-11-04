@@ -26,7 +26,7 @@ class UserListScreen extends StatelessWidget {
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: Text(title)),
       body: hidden
-          ? const Center(
+          ? Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Column(
@@ -38,7 +38,7 @@ class UserListScreen extends StatelessWidget {
                     Text(
                       'Hidden by user',
                       style: TextStyle(
-                          color: Colors.white,
+                          color: AppTheme.text,
                           fontSize: 17,
                           fontWeight: FontWeight.w700),
                     ),
@@ -62,7 +62,7 @@ class UserListScreen extends StatelessWidget {
                 }
                 final list = snap.data ?? const <VibeUser>[];
                 if (list.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text('Nothing to show yet.',
                         style: TextStyle(color: AppTheme.muted)),
                   );
@@ -83,15 +83,15 @@ class UserListScreen extends StatelessWidget {
                                 name.isNotEmpty
                                     ? name[0].toUpperCase()
                                     : '?',
-                                style: const TextStyle(
-                                    color: Colors.white,
+                                style: TextStyle(
+                                    color: AppTheme.text,
                                     fontWeight: FontWeight.w700))
                             : null,
                       ),
                       title: Text(name,
-                          style: const TextStyle(color: Colors.white)),
+                          style: TextStyle(color: AppTheme.text)),
                       subtitle: Text('@${u.username}',
-                          style: const TextStyle(color: AppTheme.muted)),
+                          style: TextStyle(color: AppTheme.muted)),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                             builder: (_) =>

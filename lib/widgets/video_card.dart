@@ -373,12 +373,12 @@ class _VideoCardState extends State<VideoCard>
         Widget row(IconData icon, String label,
             {String? subtitle, VoidCallback? onTap}) {
           return ListTile(
-            leading: Icon(icon, color: Colors.white),
-            title: Text(label, style: const TextStyle(color: Colors.white)),
+            leading: Icon(icon, color: AppTheme.text),
+            title: Text(label, style: TextStyle(color: AppTheme.text)),
             subtitle: subtitle == null
                 ? null
                 : Text(subtitle,
-                    style: const TextStyle(color: AppTheme.muted)),
+                    style: TextStyle(color: AppTheme.muted)),
             onTap: onTap,
           );
         }
@@ -423,7 +423,7 @@ class _VideoCardState extends State<VideoCard>
                 _share();
               }),
               if (isMine) ...[
-                const Divider(color: Colors.white10, height: 1),
+                Divider(color: AppTheme.hairline, height: 1),
                 row(
                   video.pinned
                       ? Icons.push_pin
@@ -469,13 +469,13 @@ class _VideoCardState extends State<VideoCard>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(20, 16, 20, 6),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text('Playback speed',
                       style: TextStyle(
-                          color: Colors.white,
+                          color: AppTheme.text,
                           fontSize: 16,
                           fontWeight: FontWeight.w800)),
                 ),
@@ -483,7 +483,7 @@ class _VideoCardState extends State<VideoCard>
               for (final s in const [0.5, 1.0, 1.5, 2.0])
                 ListTile(
                   title: Text('${s}x',
-                      style: const TextStyle(color: Colors.white)),
+                      style: TextStyle(color: AppTheme.text)),
                   trailing: _speed == s
                       ? const Icon(Icons.check, color: AppTheme.accent)
                       : null,
@@ -531,7 +531,7 @@ class _VideoCardState extends State<VideoCard>
               ),
               const SizedBox(height: 10),
               Text('${(value * 100).round()}%',
-                  style: const TextStyle(color: AppTheme.muted)),
+                  style: TextStyle(color: AppTheme.muted)),
             ],
           ),
         ),
@@ -643,10 +643,10 @@ class _VideoCardState extends State<VideoCard>
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.flag_outlined,
-                    color: Colors.white),
-                title: const Text('Report video',
-                    style: TextStyle(color: Colors.white)),
+                leading: Icon(Icons.flag_outlined,
+                    color: AppTheme.text),
+                title: Text('Report video',
+                    style: TextStyle(color: AppTheme.text)),
                 onTap: () {
                   Navigator.of(sheetCtx).pop();
                   showReportSheet(
@@ -660,9 +660,9 @@ class _VideoCardState extends State<VideoCard>
               ),
               if (!isMine)
                 ListTile(
-                  leading: const Icon(Icons.block, color: Colors.white),
+                  leading: Icon(Icons.block, color: AppTheme.text),
                   title: Text('Block @${video.username}',
-                      style: const TextStyle(color: Colors.white)),
+                      style: TextStyle(color: AppTheme.text)),
                   onTap: () async {
                     Navigator.of(sheetCtx).pop();
                     await confirmAndBlockUser(
@@ -674,9 +674,9 @@ class _VideoCardState extends State<VideoCard>
                 ),
               ListTile(
                 leading:
-                    const Icon(Icons.close, color: Colors.white),
-                title: const Text('Cancel',
-                    style: TextStyle(color: Colors.white)),
+                    Icon(Icons.close, color: AppTheme.text),
+                title: Text('Cancel',
+                    style: TextStyle(color: AppTheme.text)),
                 onTap: () => Navigator.of(sheetCtx).pop(),
               ),
             ],
@@ -701,7 +701,7 @@ class _VideoCardState extends State<VideoCard>
             onDoubleTap: _onDoubleTap,
             onLongPress: _openFeedMenu,
             child: _failed
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -858,6 +858,58 @@ class _VideoCardState extends State<VideoCard>
                   onTap: _openMoreMenu,
                 ),
               ],
+            ),
+          ),
+          // Playback progress line (build 16, user-approved from
+          // the splash-test mock): pinned to the very bottom edge
+          // of the card — directly above the shell's bottom nav —
+          // and fills with the real playback position, bright
+          // pink → violet over a faint remainder. The controller
+          // is per-card, so swiping to another video starts its
+          // own line from zero. IgnorePointer keeps it out of
+          // every gesture; it also stays visible in Clear
+          // display mode (it is neither a button nor text).
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: SizedBox(
+                height: 3,
+                child: _ctrl == null
+                    ? Container(color: Colors.white.withOpacity(0.25))
+                    : ValueListenableBuilder<VideoPlayerValue>(
+                        valueListenable: _ctrl!,
+                        builder: (context, value, _) {
+                          final total = value.duration.inMilliseconds;
+                          final pos = value.position.inMilliseconds;
+                          final frac = total > 0
+                              ? (pos / total).clamp(0.0, 1.0)
+                              : 0.0;
+                          return Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Container(
+                                  color: Colors.white.withOpacity(0.25)),
+                              FractionallySizedBox(
+                                widthFactor: frac.toDouble(),
+                                alignment: Alignment.centerLeft,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Color(0xFFFF3B5C),
+                                        AppTheme.accent2,
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
             ),
           ),
         ],

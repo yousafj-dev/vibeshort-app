@@ -62,7 +62,7 @@ class _OfflineVideosScreenState extends State<OfflineVideosScreen> {
           }
           final items = snap.data ?? const <OfflineVideo>[];
           if (items.isEmpty) {
-            return const Center(
+            return Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Column(
@@ -74,7 +74,7 @@ class _OfflineVideosScreenState extends State<OfflineVideosScreen> {
                     Text(
                       'No offline videos yet',
                       style: TextStyle(
-                          color: Colors.white,
+                          color: AppTheme.text,
                           fontSize: 18,
                           fontWeight: FontWeight.w700),
                     ),
@@ -117,10 +117,10 @@ class _OfflineVideosScreenState extends State<OfflineVideosScreen> {
         item.caption.isNotEmpty ? item.caption : 'Video',
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: AppTheme.text),
       ),
       subtitle: Text('@${item.username}',
-          style: const TextStyle(color: AppTheme.muted)),
+          style: TextStyle(color: AppTheme.muted)),
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline, color: Color(0xFFFF5C7A)),
         onPressed: () => _delete(item),
@@ -202,7 +202,7 @@ class _OfflinePlayerScreenState extends State<OfflinePlayerScreen> {
         ),
       ),
       body: _failed
-          ? const Center(
+          ? Center(
               child: Text('Could not play this file.',
                   style: TextStyle(color: AppTheme.muted)),
             )

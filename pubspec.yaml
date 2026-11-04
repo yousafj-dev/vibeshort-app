@@ -49,3 +49,6 @@ flutter:
   assets:
     # Font used by FFmpeg drawtext for the text overlay.
     - assets/fonts/DejaVuSans-Bold.ttf
+    # Logo 1 "Play-V" images (build 16): full mark + the arm /
+    # triangle sprites the animated splash draws in and pops.
+    - assets/images/
