@@ -25,10 +25,15 @@ import 'package:vibeshort/widgets/video_feed.dart';
 /// the app never lands on the same starting video — the id of
 /// the previous session's opener is kept in PrefsService and a
 /// fresh shuffle that would repeat it is swapped away from it.
-/// A "Refresh" pill sits at the top-right of the feed, next to
-/// the tabs; when a manual refresh finishes, a short-lived
-/// "Feed refreshed — new videos" chip confirms it at the top.
 /// The Following pane is untouched: still newest-first.
+///
+/// Refresh UI (test-apk-18, user's explicit spec): there is NO
+/// on-screen refresh button anywhere — the build-17 "Refresh"
+/// pill at the top of the feed is removed. Refresh is triggered
+/// only by the pull-down gesture on the first video (or by
+/// re-tapping Home). While it runs, a small popup at the top
+/// reads "Refreshing…"; when it completes the popup turns into
+/// "Feed refreshed — new videos" for ~2 s, then dismisses.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -49,14 +54,14 @@ class HomeScreenState extends State<HomeScreen>
   /// if they were playing when suspended.
   final ValueNotifier<bool> hostVisible = ValueNotifier<bool>(true);
 
-  /// "Feed refreshed" chip (test-apk-17): shown for ~2 s after a
-  /// MANUAL refresh completes (top pill, Home re-tap, or the
-  /// pull-down gesture) — never on an ordinary app open.
-  bool _bannerVisible = false;
-  Timer? _bannerTimer;
+  /// Refresh popup (test-apk-18): hidden → refreshing while a
+  /// manual refresh (pull-down, Home re-tap) runs → done for
+  /// ~2 s once it completes. Never shown on an ordinary app open.
+  _RefreshPopup _popup = _RefreshPopup.hidden;
+  Timer? _popupTimer;
 
-  /// Guards the top pill / Home re-tap against spam taps while a
-  /// refresh is already running.
+  /// Guards Home re-tap against spam while a refresh is already
+  /// running.
   bool _topRefreshing = false;
 
   @override
@@ -67,7 +72,7 @@ class HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
-    _bannerTimer?.cancel();
+    _popupTimer?.cancel();
     hostVisible.dispose();
     _tabs.dispose();
     super.dispose();
@@ -80,7 +85,8 @@ class HomeScreenState extends State<HomeScreen>
 
   /// Item 7: Home tab re-tapped while already on Home — jump to
   /// the For You tab and reload its feed from the first video.
-  /// Also the top Refresh pill's action (test-apk-17).
+  /// (test-apk-18: the only triggers are this and the pull-down
+  /// gesture — there is no refresh button.)
   void refreshFeed() {
     if (_tabs.index != 1) _tabs.animateTo(1);
     final pane = _forYouKey.currentState;
@@ -89,14 +95,22 @@ class HomeScreenState extends State<HomeScreen>
     pane.refresh().whenComplete(() => _topRefreshing = false);
   }
 
-  /// A pane finished a manual refresh: flash the confirmation
-  /// chip at the top of the feed, then fade it out.
-  void _showRefreshedBanner() {
+  /// A pane started a manual refresh: the popup switches to its
+  /// "Refreshing…" state.
+  void _onRefreshStarted() {
     if (!mounted) return;
-    setState(() => _bannerVisible = true);
-    _bannerTimer?.cancel();
-    _bannerTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _bannerVisible = false);
+    _popupTimer?.cancel();
+    setState(() => _popup = _RefreshPopup.refreshing);
+  }
+
+  /// A pane finished a manual refresh: the popup switches to
+  /// "Feed refreshed — new videos" and dismisses after ~2 s.
+  void _onRefreshed() {
+    if (!mounted) return;
+    setState(() => _popup = _RefreshPopup.done);
+    _popupTimer?.cancel();
+    _popupTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _popup = _RefreshPopup.hidden);
     });
   }
 
@@ -112,12 +126,14 @@ class HomeScreenState extends State<HomeScreen>
               _FeedPane(
                   followingOnly: true,
                   hostVisible: hostVisible,
-                  onRefreshed: _showRefreshedBanner),
+                  onRefreshStarted: _onRefreshStarted,
+                  onRefreshed: _onRefreshed),
               _FeedPane(
                   key: _forYouKey,
                   followingOnly: false,
                   hostVisible: hostVisible,
-                  onRefreshed: _showRefreshedBanner),
+                  onRefreshStarted: _onRefreshStarted,
+                  onRefreshed: _onRefreshed),
             ],
           ),
           Positioned(
@@ -163,63 +179,23 @@ class HomeScreenState extends State<HomeScreen>
                         ),
                       ),
                     ),
-                    // Refresh pill (test-apk-17): always visible at
-                    // the top of the feed, right of the tabs. One
-                    // tap re-shuffles For You and restarts it from
-                    // a new first video.
-                    Positioned(
-                      right: 8,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _topRefreshing ? null : refreshFeed,
-                            borderRadius: BorderRadius.circular(20),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 9, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white24),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.refresh,
-                                      size: 15, color: Colors.white),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'Refresh',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                      shadows: [
-                                        Shadow(
-                                            color: Colors.black87,
-                                            blurRadius: 4)
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    // test-apk-18: NO refresh button here —
+                    // the build-17 pill is removed per the
+                    // user's spec. Pull down on the first video
+                    // (or re-tap Home) to refresh; the popup
+                    // below reports progress.
                   ],
                 ),
               ),
             ),
           ),
-          // "Feed refreshed" confirmation chip (test-apk-17):
-          // fades in under the tabs after a manual refresh and
-          // back out ~2 s later. IgnorePointer throughout, so it
-          // never blocks a swipe or a tap while visible.
+          // Refresh popup (test-apk-18): a small pill popup under
+          // the tabs. It appears when a pull-down (or Home
+          // re-tap) refresh starts — spinner + "Refreshing…" —
+          // and turns into "Feed refreshed — new videos" for
+          // ~2 s when the refresh completes, then dismisses.
+          // IgnorePointer throughout, so it never blocks a swipe
+          // or a tap on the video behind it.
           Positioned(
             top: 0,
             left: 0,
@@ -230,7 +206,7 @@ class HomeScreenState extends State<HomeScreen>
                 child: Center(
                   child: IgnorePointer(
                     child: AnimatedOpacity(
-                      opacity: _bannerVisible ? 1.0 : 0.0,
+                      opacity: _popup == _RefreshPopup.hidden ? 0.0 : 1.0,
                       duration: const Duration(milliseconds: 250),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -240,20 +216,40 @@ class HomeScreenState extends State<HomeScreen>
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: Colors.white24),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.check_circle,
-                                size: 15, color: AppTheme.accent),
-                            SizedBox(width: 6),
-                            Text(
-                              'Feed refreshed — new videos',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
+                            if (_popup == _RefreshPopup.refreshing) ...[
+                              const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 7),
+                              const Text(
+                                'Refreshing…',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ] else ...[
+                              const Icon(Icons.check_circle,
+                                  size: 15, color: AppTheme.accent),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'Feed refreshed — new videos',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -271,18 +267,20 @@ class HomeScreenState extends State<HomeScreen>
 
 /// One home tab's feed body. [followingOnly] switches the stream and
 /// the empty state. [hostVisible] is the shell's playback gate,
-/// forwarded to the pager. [onRefreshed] fires when a manual
-/// refresh (pull-down, top pill, Home re-tap) has completed, so
-/// the home screen can flash its confirmation chip.
+/// forwarded to the pager. [onRefreshStarted] / [onRefreshed]
+/// bracket a manual refresh (pull-down or Home re-tap), so the
+/// home screen can drive its refresh popup (test-apk-18).
 class _FeedPane extends StatefulWidget {
   final bool followingOnly;
   final ValueListenable<bool> hostVisible;
+  final VoidCallback? onRefreshStarted;
   final VoidCallback? onRefreshed;
 
   const _FeedPane({
     super.key,
     required this.followingOnly,
     required this.hostVisible,
+    this.onRefreshStarted,
     this.onRefreshed,
   });
 
@@ -310,6 +308,7 @@ class _FeedPaneState extends State<_FeedPane> {
 
   Future<void> refresh() async {
     if (!mounted) return;
+    widget.onRefreshStarted?.call();
     setState(() {
       _tick++;
       // Test-apk-17: dropping the session order makes the fresh
@@ -431,3 +430,6 @@ class _FeedPaneState extends State<_FeedPane> {
     );
   }
 }
+
+/// States of the top refresh popup (test-apk-18).
+enum _RefreshPopup { hidden, refreshing, done }

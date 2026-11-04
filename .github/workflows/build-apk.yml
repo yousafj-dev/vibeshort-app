@@ -39,19 +39,29 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            NEW IN THIS BUILD (test-apk-17): FEED FRESHNESS —
-            the For You feed no longer opens on the same video
-            every time. The video pool is shuffled once per app
-            session, and the app remembers the last session's
-            first video so a reopen never starts on it again
-            when the pool has an alternative. A new "Refresh"
-            pill at the top of the feed (next to Following /
-            For You) re-shuffles the feed, jumps back to the
-            first video, and a "Feed refreshed — new videos"
-            chip confirms it; pull-down on the first video and
-            re-tapping Home do the same refresh. The Following
-            tab stays newest-first, unchanged. Everything from
-            test-apk-16 stays: (1) New logo —
+            NEW IN THIS BUILD (test-apk-18): TWO FIXES from the
+            test-apk-17 phone test. (1) LOGIN ASKED AGAIN AND
+            AGAIN — fixed at the root: the build-16 splash had a
+            3.5-second cap that sent the app to the login screen
+            whenever the saved session was still restoring (the
+            restore can take longer than the cap after the app
+            is closed from Recents), so the session landed
+            seconds after the login screen was already showing.
+            The splash now never routes on a guess: a saved
+            session goes to the feed every time, and the login
+            screen appears only when there is genuinely no
+            session (or after Log out). (2) REFRESH IS NOW
+            PULL-DOWN ONLY — the "Refresh" pill at the top of
+            the feed is removed; drag down on the first video
+            and a popup at the top shows "Refreshing…" then
+            "Feed refreshed — new videos", then disappears.
+            Re-tapping Home still refreshes too. (3) BONUS: the
+            white "+" on the black create button is bigger and
+            bolder. Everything from test-apk-17 stays (feed
+            freshness: per-session shuffle, a reopen never
+            starts on the same video when the pool offers an
+            alternative; the Following tab stays newest-first),
+            and everything from test-apk-16 stays: (1) New logo —
             Logo 1 "Play-V" is now the launcher icon and the
             in-app logo (splash + login). (2) Animated splash:
             the V draws in, the play triangle pops with a glow,

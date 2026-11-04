@@ -15,6 +15,10 @@ import 'package:vibeshort/widgets/video_card.dart';
 /// [onRefresh] (the parent reloads the feed, which rebuilds this
 /// pager at page 0). Normal vertical swipes between videos are
 /// untouched — overscroll only exists beyond the first page.
+/// The circle in this widget is only the DRAG-progress cue; once
+/// the refresh actually runs, the home screen's top popup
+/// ("Refreshing…" → "Feed refreshed — new videos") reports it —
+/// test-apk-18, the only refresh trigger is this gesture.
 class PagedVideoFeed extends StatefulWidget {
   final List<VibeVideo> videos;
   final int initialPage;
@@ -128,7 +132,10 @@ class _PagedVideoFeedState extends State<PagedVideoFeed> {
       ),
     );
     if (widget.onRefresh == null) return pager;
-    final showIndicator = _refreshing || _pullPx > 4;
+    // Drag cue only: while a refresh RUNS, this pager is usually
+    // rebuilt by the parent anyway, and the home popup shows the
+    // "Refreshing…" state — no second spinner here (test-apk-18).
+    final showIndicator = !_refreshing && _pullPx > 4;
     return Stack(
       children: [
         NotificationListener<ScrollNotification>(
@@ -152,9 +159,7 @@ class _PagedVideoFeedState extends State<PagedVideoFeed> {
                 child: CircularProgressIndicator(
                   strokeWidth: 2.6,
                   color: AppTheme.accent,
-                  value: _refreshing
-                      ? null
-                      : (_pullPx / _pullThreshold).clamp(0.0, 1.0),
+                  value: (_pullPx / _pullThreshold).clamp(0.0, 1.0),
                 ),
               ),
             ),

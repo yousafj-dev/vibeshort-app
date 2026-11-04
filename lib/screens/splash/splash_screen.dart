@@ -16,13 +16,30 @@ import 'package:vibeshort/widgets/main_shell.dart';
 /// crossfades into the first screen. A tap skips to the end of
 /// the animation.
 ///
-/// Routing still waits for BOTH the intro AND the real auth
-/// state ([AuthService.authResolved]) — Firebase Auth persists
-/// the session natively on Android, so a signed-in user goes
+/// Routing waits for BOTH the intro AND the real auth state
+/// ([AuthService.authResolved]) — Firebase Auth persists the
+/// session natively on Android, so a signed-in user goes
 /// straight home; login shows only when genuinely signed out.
-/// One addition over the pre-16 splash: a hard 3.5s cap so a
-/// hung auth restore can never trap the user here — at the cap
-/// it routes on the best-known sign-in state.
+///
+/// test-apk-18 ROOT-CAUSE FIX ("login asked again and again"):
+/// the build-16 splash added a 3.5s hard cap that routed on the
+/// best-known state even while auth was UNRESOLVED. But
+/// AuthService's restore window (fix round 3) deliberately holds
+/// resolution for up to 12s when the first auth event arrives
+/// null while a session marker exists — exactly the cold-start
+/// pattern after the app is swiped from Recents. The cap fired
+/// at 3.5s with _user still null and dropped the user on the
+/// login screen, seconds before the native session landed; and
+/// because the splash was gone, the restored session never
+/// re-routed him. The pre-16 splash had no cap and simply kept
+/// waiting, which is why persistence "worked" before. The cap
+/// is now a SETTLE check, not a routing decision: at 3.5s an
+/// unresolved gate is settled from the LIVE FirebaseAuth
+/// session when one exists (signed in → home); with no live
+/// session the splash keeps waiting for real resolution, and a
+/// 20s last-resort backstop (past the full 12s restore window)
+/// settles from live state either way so the user can never be
+/// trapped here.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -35,6 +52,7 @@ class _SplashScreenState extends State<SplashScreen>
   late final AuthService _auth;
   late final AnimationController _ctrl;
   Timer? _capTimer;
+  Timer? _backstopTimer;
   bool _delayDone = false;
   bool _capReached = false;
   bool _routed = false;
@@ -62,9 +80,20 @@ class _SplashScreenState extends State<SplashScreen>
         }
       });
     _ctrl.forward();
-    // Hard cap: never trap the user on the splash.
+    // Settle check (test-apk-18): if auth is still unresolved at
+    // 3.5s, _maybeRoute settles the gate from the LIVE native
+    // session when one exists. It never routes to login on an
+    // unresolved state — see the class doc for the root cause.
     _capTimer = Timer(const Duration(milliseconds: 3500), () {
       _capReached = true;
+      _maybeRoute();
+    });
+    // Last-resort backstop: AuthService guarantees resolution
+    // within its 12s restore window, so this should never fire —
+    // but if the auth stream somehow never delivers, settle from
+    // live state (either way) instead of trapping the user here.
+    _backstopTimer = Timer(const Duration(seconds: 20), () {
+      _auth.settleFromLiveSession(force: true);
       _maybeRoute();
     });
     _maybeRoute();
@@ -73,6 +102,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _capTimer?.cancel();
+    _backstopTimer?.cancel();
     _ctrl.dispose();
     _auth.removeListener(_maybeRoute);
     super.dispose();
@@ -87,7 +117,21 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _maybeRoute() {
     if (_routed || !mounted) return;
-    if (!(_delayDone && _auth.authResolved) && !_capReached) return;
+    if (!_delayDone) return;
+    if (!_auth.authResolved) {
+      // Unresolved: the ONLY early exit is a live native session
+      // (test-apk-18). Settling through the service keeps its
+      // marker/listener state consistent; if it resolves, fall
+      // through and route in this same call. Otherwise keep
+      // waiting — routing to login from here, on a guess, was
+      // the "login again and again" bug.
+      if (_capReached && _auth.hasLiveSession) {
+        _auth.settleFromLiveSession();
+      }
+      // Settling notifies listeners, which re-enters this method
+      // and may already have routed — bail out in that case.
+      if (_routed || !_auth.authResolved) return;
+    }
     _routed = true;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(

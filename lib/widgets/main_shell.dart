@@ -107,15 +107,18 @@ class _MainShellState extends State<MainShell> {
               height: 32,
               decoration: BoxDecoration(
                 // Solid BLACK create button in both themes
-                // (build 16, user-approved) — the white glyph
-                // stays clearly visible on it. A faint hairline
+                // (build 16, user-approved). A faint hairline
                 // border keeps the pill defined against the
-                // near-black dark nav bar.
+                // near-black dark nav bar. The button's size and
+                // shape are unchanged in test-apk-18 — only the
+                // white "+" glyph grows a bit and gets bolder
+                // (drawn from two thick rounded bars instead of
+                // the thin icon-font glyph, user's request).
                 color: Colors.black,
                 border: Border.all(color: AppTheme.hairline),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 22),
+              child: const Center(child: _BoldPlusGlyph()),
             ),
             label: 'Create',
           ),
@@ -276,6 +279,43 @@ class _MainShellState extends State<MainShell> {
           ],
         );
       },
+    );
+  }
+}
+
+/// The create button's "+" glyph (test-apk-18): two thick,
+/// rounded white bars — visibly bigger and bolder than the
+/// Icons.add font glyph it replaced, so the plus reads bold at
+/// a glance. Sized to sit inside the unchanged 46×32 black pill.
+class _BoldPlusGlyph extends StatelessWidget {
+  const _BoldPlusGlyph();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 23,
+      height: 23,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 23,
+            height: 6.5,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(3.25),
+            ),
+          ),
+          Container(
+            width: 6.5,
+            height: 23,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(3.25),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -63,6 +63,14 @@ class AuthService extends ChangeNotifier {
   Timer? _restoreTimer;
   bool _hadSessionMarker = false;
 
+  /// In-memory mirror of the explicit-sign-out marker (test-apk-18):
+  /// true only between an explicit sign-out (Log out / Switch /
+  /// Delete) and the next sign-in. A stray null auth event that
+  /// arrives while a session is resolved signed-in is treated as
+  /// transient (token-refresh / reload edge) and ignored UNLESS
+  /// this flag says the sign-out was deliberate.
+  bool _explicitOut = false;
+
   FirebaseAuth get _authSafe {
     _auth ??= FirebaseAuth.instance;
     return _auth!;
@@ -142,6 +150,7 @@ class AuthService extends ChangeNotifier {
     if (u != null) {
       final wasRestoring = _restoringSession;
       _user = u;
+      _explicitOut = false;
       _restoringSession = false;
       _restoreTimer?.cancel();
       _authResolved = true;
@@ -150,6 +159,17 @@ class AuthService extends ChangeNotifier {
         debugPrint('AuthService: session restored after null event');
       }
       notifyListeners();
+      return;
+    }
+    // Null event. Test-apk-18 guard: once a session has RESOLVED
+    // signed-in, a stray null (both streams can emit one during
+    // token refresh / profile reload on some devices) must never
+    // tear it down — only an EXPLICIT sign-out may do that, and
+    // signOut() has already cleared _user itself by the time its
+    // null event arrives here.
+    if (_authResolved && _user != null && !_explicitOut) {
+      debugPrint('AuthService: ignoring transient null event '
+          '(session already resolved signed-in)');
       return;
     }
     _user = null;
@@ -202,6 +222,7 @@ class AuthService extends ChangeNotifier {
   /// Marks an EXPLICIT sign-out (the only paths that may clear
   /// the session marker): Log out, Switch account, Delete account.
   Future<void> _markExplicitSignOut() async {
+    _explicitOut = true;
     _hadSessionMarker = false;
     _restoringSession = false;
     _restoreTimer?.cancel();
@@ -210,6 +231,44 @@ class AuthService extends ChangeNotifier {
       await p.remove(_kSessionUid);
       await p.setBool(_kExplicitOut, true);
     } catch (_) {}
+  }
+
+  /// True when FirebaseAuth's LIVE native store holds a session
+  /// right now (test-apk-18). The splash consults this before it
+  /// may route anywhere on an unresolved state: a live session
+  /// means "signed in", regardless of how slowly the auth
+  /// stream's first event is travelling.
+  bool get hasLiveSession {
+    if (!firebaseReady) return false;
+    try {
+      return _authSafe.currentUser != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Settles an unresolved gate from the LIVE native session
+  /// (test-apk-18). A live user is fed through the normal event
+  /// handler, so marker/resolved/listener state stays consistent.
+  /// With no live user, nothing is decided unless [force] is set
+  /// — the splash's last-resort backstop uses that (long after
+  /// the restore window has had its full chance) to accept
+  /// "signed out" and let the gate route to login rather than
+  /// trapping the user on the splash forever.
+  void settleFromLiveSession({bool force = false}) {
+    if (_authResolved || !firebaseReady) return;
+    try {
+      final cu = _authSafe.currentUser;
+      if (cu != null) {
+        _onAuthEvent(cu);
+        return;
+      }
+    } catch (_) {}
+    if (!force) return;
+    _restoringSession = false;
+    _restoreTimer?.cancel();
+    _authResolved = true;
+    notifyListeners();
   }
 
   /// Creates the account and returns the new user's uid. Profile
@@ -224,6 +283,7 @@ class AuthService extends ChangeNotifier {
         password: pw,
       );
       _user = cred.user;
+      _explicitOut = false;
       _hadSessionMarker = true;
       await _cacheEmail(email.trim());
       await _markSession(cred.user!.uid);
@@ -243,6 +303,7 @@ class AuthService extends ChangeNotifier {
         password: pw,
       );
       _user = cred.user;
+      _explicitOut = false;
       _hadSessionMarker = true;
       await _cacheEmail(email.trim());
       await _markSession(cred.user!.uid);
