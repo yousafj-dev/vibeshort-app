@@ -283,9 +283,19 @@ class _VideoCardState extends State<VideoCard>
     }
   }
 
+  /// Memoised caption span (test-apk-19): [build] runs again on
+  /// every like toggle / state change, and rebuilding the span
+  /// disposes and recreates a TapGestureRecognizer per hashtag
+  /// every time. The span only depends on the caption text, so
+  /// it is built once per distinct caption and reused.
+  String? _spanForCaption;
+  InlineSpan? _spanCached;
+
   /// Caption as rich text: `#tags` in the accent color, tappable to
   /// open that hashtag's video grid.
   InlineSpan _captionSpan(String caption) {
+    final cached = _spanCached;
+    if (cached != null && _spanForCaption == caption) return cached;
     for (final r in _captionRecognizers) {
       r.dispose();
     }
@@ -323,7 +333,10 @@ class _VideoCardState extends State<VideoCard>
     if (last < caption.length) {
       spans.add(TextSpan(text: caption.substring(last)));
     }
-    return TextSpan(style: base, children: spans);
+    final result = TextSpan(style: base, children: spans);
+    _spanForCaption = caption;
+    _spanCached = result;
+    return result;
   }
 
   /// Tap on the video: in Clear display mode a tap only brings
@@ -689,7 +702,12 @@ class _VideoCardState extends State<VideoCard>
   @override
   Widget build(BuildContext context) {
     final video = widget.video;
-    return Container(
+    // RepaintBoundary (test-apk-19): the video texture repaints
+    // continuously while playing; isolating the whole card keeps
+    // those repaints from invalidating sibling cards and the
+    // shell chrome during scrolls.
+    return RepaintBoundary(
+      child: Container(
       color: Colors.black,
       child: Stack(
         fit: StackFit.expand,
@@ -722,9 +740,32 @@ class _VideoCardState extends State<VideoCard>
                           child: VideoPlayer(_ctrl!),
                         ),
                       )
-                    : const Center(
-                        child: CircularProgressIndicator(
-                            color: AppTheme.accent),
+                    : Stack(
+                        // Poster while the player initialises
+                        // (test-apk-19): the video's first-frame
+                        // thumbnail fills the screen immediately,
+                        // so a swipe lands on a picture instead of
+                        // a black screen with a spinner — the
+                        // "jammed" feel. The player swaps in over
+                        // it as soon as it is ready (and, with
+                        // the pager's preloading, it usually
+                        // already is). Non-Cloudinary videos have
+                        // no thumbnail: spinner on black, as
+                        // before.
+                        fit: StackFit.expand,
+                        children: [
+                          if (video.thumbUrl.isNotEmpty)
+                            Image.network(
+                              video.thumbUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const SizedBox.shrink(),
+                            ),
+                          const Center(
+                            child: CircularProgressIndicator(
+                                color: AppTheme.accent),
+                          ),
+                        ],
                       ),
           ),
           if (_showPlayIcon && _ready && !_clearDisplay)
@@ -913,6 +954,7 @@ class _VideoCardState extends State<VideoCard>
             ),
           ),
         ],
+      ),
       ),
     );
   }

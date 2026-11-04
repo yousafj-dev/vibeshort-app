@@ -41,6 +41,17 @@ const FirebaseOptions _firebaseOptions = FirebaseOptions(
 /// firebaseReady == false as an offline session and routes to
 /// the login screen, so a single flaky attempt used to look
 /// exactly like a lost login.
+///
+/// test-apk-19: the retry NO LONGER deletes the default app
+/// first. The old code called Firebase.app().delete() between
+/// attempts — deleting the default app destroys the persisted
+/// Auth session store attached to it, so ONE flaky init on a
+/// device holding a healthy session could wipe that session
+/// permanently (a plausible contributor to the recurring
+/// "login again and again" reports: the session would be gone
+/// before AuthService ever got to look for it). Instead, if the
+/// second attempt fails because the first actually created the
+/// app (duplicate-app), the existing app is used as-is.
 Future<bool> _initFirebase() async {
   try {
     await Firebase.initializeApp(options: _firebaseOptions);
@@ -48,17 +59,22 @@ Future<bool> _initFirebase() async {
   } catch (e) {
     debugPrint('VibeShort: Firebase init attempt 1 failed: $e');
   }
-  // Drop a half-created default app before retrying.
-  try {
-    await Firebase.app().delete();
-  } catch (_) {}
   await Future<void>.delayed(const Duration(milliseconds: 700));
   try {
     await Firebase.initializeApp(options: _firebaseOptions);
     return true;
   } catch (e) {
     debugPrint('VibeShort: Firebase init attempt 2 failed: $e');
-    return false;
+    // Attempt 1 may have created the default app before its
+    // error surfaced; if a default app exists now, use it —
+    // NEVER delete it (see the doc above).
+    try {
+      Firebase.app();
+      debugPrint('VibeShort: using existing default Firebase app');
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }
 

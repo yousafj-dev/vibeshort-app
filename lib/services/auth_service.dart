@@ -6,36 +6,66 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Email/password auth for VibeShort.
 ///
-/// Session persistence is the design rule: FirebaseAuth persists the
-/// session natively on Android, and the splash gate waits for
-/// [authResolved] — the first real auth-state event — before routing,
-/// so a signed-in user is NEVER dropped on the login screen at cold
-/// start (this was the "login every time" bug in the previous app).
+/// Session persistence is the design rule, implemented the
+/// STANDARD way (test-apk-19): FirebaseAuth persists the session
+/// natively on Android; at startup this service reads
+/// [FirebaseAuth.currentUser] and subscribes to
+/// `authStateChanges()` — the stream whose first event reflects
+/// the persisted state — and the splash gate waits for
+/// [authResolved] before routing.
 ///
-/// Fix round 3 hardened this further, after "login every time I
-/// close the app from Recents" was reported on the shipped build:
-///  * The app now runs under a REGISTERED ANDROID appId (see
-///    main.dart) — the web appId left the native session store
-///    without a proper Android app identity to key on.
-///  * A session marker (uid) is kept in SharedPreferences. When a
-///    marker exists but the first auth event says "signed out",
-///    the gate does NOT route to login immediately: it enters a
-///    restore window ([restoringSession]) and keeps listening —
-///    native restore can lag on slow devices, and a Firestore
-///    profile fetch is never part of the gate at all, so a near-
-///    zero-bandwidth connection cannot bounce a signed-in user
-///    to the login screen. Only an EXPLICIT sign-out (Log out /
-///    Switch account / Delete account) clears the marker, and
-///    only then does a null event resolve instantly.
+/// Why the standard pattern replaced the earlier patchwork: the
+/// fix-round-3 "restore window" held resolution for up to 12 s
+/// whenever the first auth event arrived null with a session
+/// marker present, and test-apk-18 kept that window. On the
+/// user's phone the native restore never landed inside the
+/// window, so every cold start showed "Restoring your session…"
+/// for ~10 s and then dropped him on the login screen anyway —
+/// and the window's expiry CLEARED the session marker, making
+/// the damage permanent. A healthy Firebase cold start resolves
+/// in about a second; a 10-second wait is itself a defect.
+///
+/// The rules now:
+///  * A non-null user (currentUser at startup, or any event) is
+///    definitive: signed in, session marker written, resolved.
+///  * A null event resolves signed-out IMMEDIATELY when there is
+///    no session marker (never signed in) or an explicit sign-out
+///    flag is set (Log out / Switch account / Delete account).
+///  * A null event WITH a marker gets one SHORT fuse (3 s, with
+///    a mid-fuse currentUser re-check): if a live user surfaces
+///    in that time the gate resolves signed-in, otherwise it
+///    resolves signed-out and records a "restore miss" for
+///    diagnosis — the marker is KEPT (only an explicit sign-out,
+///    an account deletion, or a fresh sign-in may change it), so
+///    one bad restore can never break every future launch.
+///  * Once resolved signed-in, a stray null event (token-refresh
+///    / reload edge) never tears the session down; only an
+///    explicit sign-out does.
+///  * The splash is the ONLY automatic router to the login
+///    screen, and it routes only on a resolved state. Every
+///    other trip to the login screen in the app follows an
+///    explicit user tap (Log out / Delete account).
 class AuthService extends ChangeNotifier {
   AuthService._();
 
   static final AuthService instance = AuthService._();
 
-  /// Session-marker keys (fix round 3). The marker records only
-  /// THAT a session existed and its uid — never a credential.
+  /// Session-marker keys. The marker records only THAT a session
+  /// existed and its uid — never a credential. It is written on
+  /// sign-in / sign-up and on every resolved signed-in event,
+  /// and cleared ONLY by an explicit sign-out or account
+  /// deletion (test-apk-19: the old restore-window expiry also
+  /// cleared it, which turned one slow restore into a permanent
+  /// every-launch bounce — timeouts NEVER clear it now).
   static const String _kSessionUid = 'vibeshort_session_uid';
   static const String _kExplicitOut = 'vibeshort_explicit_signout';
+
+  /// Restore-miss diagnostics (test-apk-19): how often the gate
+  /// resolved signed-out while a session marker existed (the
+  /// "session restore never landed" fingerprint), and when it
+  /// last happened. Purely diagnostic — never used for routing.
+  static const String _kRestoreMissCount = 'vibeshort_restore_miss_count';
+  static const String _kRestoreMissAt = 'vibeshort_restore_miss_at';
 
   /// Set by main() after the Firebase.initializeApp() attempt.
   static bool firebaseReady = false;
@@ -54,14 +84,27 @@ class AuthService extends ChangeNotifier {
   bool _authResolved = false;
   bool get authResolved => _authResolved;
 
-  /// Fix round 3: a session marker existed at startup but the
-  /// first auth event reported signed-out, so the gate is holding
-  /// in the restore window instead of bouncing to login. The
-  /// splash shows a "restoring session" cue while this is true.
-  bool _restoringSession = false;
-  bool get restoringSession => _restoringSession;
-  Timer? _restoreTimer;
-  bool _hadSessionMarker = false;
+  /// Uid from the session marker read at startup (null = no
+  /// prior session on this device). Kept in sync by
+  /// [_markSession] whenever the marker is written or cleared.
+  String? _markerUid;
+
+  /// The short fuse (test-apk-19) running after a first null
+  /// event that arrived WITH a session marker: the gate gives
+  /// the native restore up to [_fuseWindow] to surface a live
+  /// user before it accepts "signed out". While the fuse runs —
+  /// and only then — the splash may show its restoring cue, so
+  /// the cue can now last at most ~3 s instead of ~10 s.
+  Timer? _fuseTimer;
+  Timer? _fuseRecheck;
+  bool _fuseRunning = false;
+  static const Duration _fuseWindow = Duration(seconds: 3);
+
+  /// True while a marker-carrying cold start is still
+  /// unresolved (the brief fuse period). The splash shows its
+  /// "restoring session" cue while this is true.
+  bool get restoringSession =>
+      !_authResolved && _markerUid != null && !_explicitOut;
 
   /// In-memory mirror of the explicit-sign-out marker (test-apk-18):
   /// true only between an explicit sign-out (Log out / Switch /
@@ -107,29 +150,35 @@ class AuthService extends ChangeNotifier {
       _authResolved = true;
       return;
     }
-    // Fix round 3: read the session marker BEFORE subscribing, so
-    // the very first null event can be judged against it.
+    // Read the session marker and the explicit-sign-out flag
+    // BEFORE subscribing, so the very first auth event can be
+    // judged against them.
     try {
       final p = await SharedPreferences.getInstance();
-      _hadSessionMarker = p.getString(_kSessionUid) != null &&
-          p.getBool(_kExplicitOut) != true;
+      _markerUid = p.getString(_kSessionUid);
+      _explicitOut = p.getBool(_kExplicitOut) == true;
+      if (_explicitOut) _markerUid = null;
     } catch (_) {
-      _hadSessionMarker = false;
+      _markerUid = null;
     }
     try {
       // Fast path only: a non-null currentUser is a definite
       // signed-in session. A null here proves NOTHING at cold
       // start (native restore may still be in flight), so in that
-      // case only the first stream event resolves the state.
+      // case the first stream event — or the short fuse —
+      // resolves the state.
       _user = _authSafe.currentUser;
       if (_user != null) {
         _authResolved = true;
         _markSession(_user!.uid);
       }
-      // Both streams are listened to: userChanges also fires for
-      // token/profile restores that authStateChanges can lag on.
+      // Standard pattern (test-apk-19): authStateChanges() ONLY.
+      // Its first event reflects the persisted session state.
+      // The old code ALSO listened to userChanges(), whose extra
+      // initial/null events fed the fragile restore-window logic
+      // this build removes; profile changes are applied through
+      // the explicit update methods below, not the stream.
       _authSafe.authStateChanges().listen(_onAuthEvent);
-      _authSafe.userChanges().listen(_onAuthEvent);
       notifyListeners();
     } catch (e) {
       debugPrint('AuthService.init failed: $e');
@@ -137,85 +186,128 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// Single handler for auth-state events (fix round 3).
+  /// Single handler for auth-state events (test-apk-19).
   ///
-  /// A non-null user is definitive: signed in, marker written,
-  /// gate resolved. A null user is definitive ONLY when there is
-  /// no session marker (never signed in, or an explicit sign-out
-  /// already cleared it) — with a marker, the native restore may
-  /// simply be lagging after process death, so the gate holds in
-  /// the restore window for up to 12 s (re-checking currentUser
-  /// once mid-window) before it accepts "signed out".
+  /// A non-null user is definitive at ANY time: signed in,
+  /// marker written, gate resolved, fuse cancelled.
+  ///
+  /// A null user is judged by context:
+  ///  * already resolved signed-in and NOT an explicit sign-out
+  ///    → transient (token-refresh / reload edge): ignored, the
+  ///    session is never torn down by a stray null;
+  ///  * explicit sign-out → the sign-out path has already
+  ///    cleared the user; this echo changes nothing;
+  ///  * unresolved with NO marker (or an explicit sign-out
+  ///    before this launch) → definitive signed-out, resolve
+  ///    immediately (fresh installs reach login with no wait);
+  ///  * unresolved WITH a marker → start the short fuse: the
+  ///    native restore gets [_fuseWindow] to surface a live
+  ///    user (re-checked mid-fuse and at expiry). If none
+  ///    surfaces, the gate resolves signed-out and records a
+  ///    restore miss — but the marker is KEPT, so the next
+  ///    launch gets the same fair chance instead of an instant
+  ///    bounce (the old 12 s window cleared the marker at
+  ///    expiry, which is what made the failure permanent).
   void _onAuthEvent(User? u) {
     if (u != null) {
-      final wasRestoring = _restoringSession;
+      final wasUnresolved = !_authResolved;
       _user = u;
       _explicitOut = false;
-      _restoringSession = false;
-      _restoreTimer?.cancel();
+      _cancelFuse();
       _authResolved = true;
       _markSession(u.uid);
-      if (wasRestoring) {
-        debugPrint('AuthService: session restored after null event');
+      if (wasUnresolved) {
+        debugPrint('AuthService: session resolved signed-in');
       }
       notifyListeners();
       return;
     }
-    // Null event. Test-apk-18 guard: once a session has RESOLVED
-    // signed-in, a stray null (both streams can emit one during
-    // token refresh / profile reload on some devices) must never
-    // tear it down — only an EXPLICIT sign-out may do that, and
-    // signOut() has already cleared _user itself by the time its
-    // null event arrives here.
-    if (_authResolved && _user != null && !_explicitOut) {
-      debugPrint('AuthService: ignoring transient null event '
-          '(session already resolved signed-in)');
+    // Null event.
+    if (_authResolved) {
+      if (_user != null && !_explicitOut) {
+        debugPrint('AuthService: ignoring transient null event '
+            '(session already resolved signed-in)');
+      }
+      // Otherwise: the echo of an explicit sign-out (signOut /
+      // deleteCurrentUser already cleared _user) or a repeat
+      // null on a resolved signed-out gate — nothing changes.
       return;
     }
-    _user = null;
-    if (!_hadSessionMarker || _authResolved) {
+    if (_explicitOut || _markerUid == null) {
+      _user = null;
       _authResolved = true;
       notifyListeners();
       return;
     }
-    // Marker present + first null: hold, don't bounce.
-    if (!_restoringSession) {
-      _restoringSession = true;
-      debugPrint('AuthService: null event with session marker — '
-          'holding in restore window');
-      // Mid-window re-check: on some devices currentUser lands
-      // before any further stream event fires.
-      Timer(const Duration(seconds: 3), () {
-        final cu = _authSafe.currentUser;
-        if (cu != null) _onAuthEvent(cu);
-      });
-      _restoreTimer = Timer(const Duration(seconds: 12), () {
-        if (!_restoringSession) return;
-        _restoringSession = false;
-        // The native session is genuinely gone. Drop the stale
-        // marker so the NEXT cold start resolves instantly, and
-        // let the gate route to login this once — the sign-in
-        // that follows re-persists under the fixed app identity.
-        _hadSessionMarker = false;
-        _markSession(null);
-        _authResolved = true;
-        notifyListeners();
-      });
+    // Unresolved WITH a marker: give the restore the short fuse.
+    if (_fuseRunning) return; // further nulls change nothing
+    _fuseRunning = true;
+    debugPrint('AuthService: null event with session marker — '
+        'short fuse started');
+    notifyListeners();
+    _fuseRecheck = Timer(const Duration(milliseconds: 1200), () {
+      final cu = _authSafe.currentUser;
+      if (cu != null) _onAuthEvent(cu);
+    });
+    _fuseTimer = Timer(_fuseWindow, () {
+      _fuseRunning = false;
+      if (_authResolved) return;
+      final cu = _authSafe.currentUser;
+      if (cu != null) {
+        _onAuthEvent(cu);
+        return;
+      }
+      // The restore genuinely did not land in time. Resolve
+      // signed-out (the splash may now route to login — the ONLY
+      // automatic path there), record the miss for diagnosis,
+      // and KEEP the marker: a timeout must never destroy the
+      // record that a session existed.
+      _user = null;
+      _authResolved = true;
+      _recordRestoreMiss();
       notifyListeners();
-    }
+    });
   }
 
-  /// Writes/clears the fix-round-3 session marker. Fire-and-forget:
-  /// a prefs failure must never break an auth flow.
-  Future<void> _markSession(String? uid) async {
+  void _cancelFuse() {
+    _fuseRunning = false;
+    _fuseTimer?.cancel();
+    _fuseRecheck?.cancel();
+  }
+
+  /// Persists a restore-miss diagnostic (see [_kRestoreMissCount]).
+  Future<void> _recordRestoreMiss() async {
+    debugPrint('AuthService: RESTORE MISS — marker existed but '
+        'no live session surfaced within the fuse');
     try {
       final p = await SharedPreferences.getInstance();
-      if (uid == null) {
-        await p.remove(_kSessionUid);
-      } else {
-        await p.setString(_kSessionUid, uid);
-        await p.setBool(_kExplicitOut, false);
-      }
+      await p.setInt(
+          _kRestoreMissCount, (p.getInt(_kRestoreMissCount) ?? 0) + 1);
+      await p.setInt(
+          _kRestoreMissAt, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  /// Clears the restore-miss diagnostics after a real sign-in —
+  /// fresh evidence starts from zero.
+  Future<void> _clearRestoreMiss() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.remove(_kRestoreMissCount);
+      await p.remove(_kRestoreMissAt);
+    } catch (_) {}
+  }
+
+  /// Writes the session marker for [uid] (a live session exists).
+  /// Fire-and-forget: a prefs failure must never break an auth
+  /// flow. Clearing the marker happens ONLY in
+  /// [_markExplicitSignOut] — never on a timeout (test-apk-19).
+  Future<void> _markSession(String uid) async {
+    _markerUid = uid;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_kSessionUid, uid);
+      await p.setBool(_kExplicitOut, false);
     } catch (_) {}
   }
 
@@ -223,9 +315,8 @@ class AuthService extends ChangeNotifier {
   /// the session marker): Log out, Switch account, Delete account.
   Future<void> _markExplicitSignOut() async {
     _explicitOut = true;
-    _hadSessionMarker = false;
-    _restoringSession = false;
-    _restoreTimer?.cancel();
+    _markerUid = null;
+    _cancelFuse();
     try {
       final p = await SharedPreferences.getInstance();
       await p.remove(_kSessionUid);
@@ -247,14 +338,15 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  /// Settles an unresolved gate from the LIVE native session
-  /// (test-apk-18). A live user is fed through the normal event
-  /// handler, so marker/resolved/listener state stays consistent.
-  /// With no live user, nothing is decided unless [force] is set
-  /// — the splash's last-resort backstop uses that (long after
-  /// the restore window has had its full chance) to accept
-  /// "signed out" and let the gate route to login rather than
-  /// trapping the user on the splash forever.
+  /// Settles an unresolved gate from the LIVE native session.
+  /// A live user is fed through the normal event handler, so
+  /// marker/resolved/listener state stays consistent. With no
+  /// live user, nothing is decided unless [force] is set — the
+  /// splash's last-resort backstop uses that (long after the
+  /// short fuse has had its full chance) to accept "signed out"
+  /// and let the gate route to login rather than trapping the
+  /// user on the splash forever. In normal operation the fuse
+  /// resolves the gate within ~3 s and this never fires.
   void settleFromLiveSession({bool force = false}) {
     if (_authResolved || !firebaseReady) return;
     try {
@@ -265,8 +357,8 @@ class AuthService extends ChangeNotifier {
       }
     } catch (_) {}
     if (!force) return;
-    _restoringSession = false;
-    _restoreTimer?.cancel();
+    _cancelFuse();
+    _user = null;
     _authResolved = true;
     notifyListeners();
   }
@@ -284,9 +376,11 @@ class AuthService extends ChangeNotifier {
       );
       _user = cred.user;
       _explicitOut = false;
-      _hadSessionMarker = true;
+      _authResolved = true;
+      _cancelFuse();
       await _cacheEmail(email.trim());
       await _markSession(cred.user!.uid);
+      await _clearRestoreMiss();
       notifyListeners();
       return cred.user!.uid;
     } on FirebaseAuthException catch (e) {
@@ -304,9 +398,11 @@ class AuthService extends ChangeNotifier {
       );
       _user = cred.user;
       _explicitOut = false;
-      _hadSessionMarker = true;
+      _authResolved = true;
+      _cancelFuse();
       await _cacheEmail(email.trim());
       await _markSession(cred.user!.uid);
+      await _clearRestoreMiss();
       notifyListeners();
     } on FirebaseAuthException catch (e) {
       throw Exception(_friendly(e));

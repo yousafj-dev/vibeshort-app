@@ -9,6 +9,19 @@ import 'package:vibeshort/widgets/video_card.dart';
 /// its video's document id so a card can never be re-bound to a
 /// different video while keeping a stale player.
 ///
+/// Preloading (test-apk-19, "feed feels jammed / slow"): the
+/// pager sets [PageView.allowImplicitScrolling], which keeps the
+/// pages ADJACENT to the visible one built. A neighbouring
+/// [VideoCard] therefore runs its player initialisation —
+/// network fetch + decoder setup + buffering — while the user is
+/// still watching the current video, instead of starting it at
+/// the moment the swipe lands (which was the visible stall on
+/// every swipe: spinner, then a late first frame). Adjacent
+/// cards initialise PAUSED (a card only plays when it is the
+/// active page), and a card two pages away leaves the tree and
+/// disposes its controller, so at most ~3 players are ever
+/// alive: previous, current, next.
+///
 /// Pull-to-refresh (fix round, item 8): when [onRefresh] is set
 /// and the user is on the FIRST video, dragging down past the top
 /// edge accumulates a pull; releasing beyond the threshold runs
@@ -119,6 +132,10 @@ class _PagedVideoFeedState extends State<PagedVideoFeed> {
     final pager = PageView.builder(
       controller: _pageCtrl,
       scrollDirection: Axis.vertical,
+      // Pre-build (and pre-buffer) the pages next to the visible
+      // one — see the class doc. This is the PageView knob that
+      // keeps adjacent pages in the tree.
+      allowImplicitScrolling: true,
       itemCount: videos.length,
       onPageChanged: (i) => setState(() {
         _current = i;

@@ -39,25 +39,44 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            NEW IN THIS BUILD (test-apk-18): TWO FIXES from the
-            test-apk-17 phone test. (1) LOGIN ASKED AGAIN AND
-            AGAIN — fixed at the root: the build-16 splash had a
-            3.5-second cap that sent the app to the login screen
-            whenever the saved session was still restoring (the
-            restore can take longer than the cap after the app
-            is closed from Recents), so the session landed
-            seconds after the login screen was already showing.
-            The splash now never routes on a guess: a saved
-            session goes to the feed every time, and the login
-            screen appears only when there is genuinely no
-            session (or after Log out). (2) REFRESH IS NOW
-            PULL-DOWN ONLY — the "Refresh" pill at the top of
-            the feed is removed; drag down on the first video
-            and a popup at the top shows "Refreshing…" then
-            "Feed refreshed — new videos", then disappears.
-            Re-tapping Home still refreshes too. (3) BONUS: the
-            white "+" on the black create button is bigger and
-            bolder. Everything from test-apk-17 stays (feed
+            NEW IN THIS BUILD (test-apk-19): A FORENSIC FIX ROUND
+            from the test-apk-18 phone retest. (1) LOGIN STILL
+            ASKED AGAIN AND AGAIN + A ~10-SECOND "Restoring your
+            session…" WAIT — the whole auth flow was audited and
+            rebuilt on the standard pattern. What the audit
+            found: the ONLY automatic route to the login screen
+            is the splash; every other trip there follows an
+            explicit Log out / Delete tap; nothing in the app
+            signs the user out behind his back; and the ~10s
+            wait was AuthService's old 12-second restore window
+            expiring as signed-out (its expiry also wiped the
+            session marker, making the failure permanent). That
+            window is GONE. Auth now resolves from
+            FirebaseAuth.currentUser + the first authStateChanges
+            event, with at most a 3-second fuse in the
+            marker-present case — and a timeout can never wipe
+            the session marker again. The Firebase init retry
+            also no longer deletes the default app (deleting it
+            can destroy the persisted session store). Honest
+            note: if the sign-in still does not survive on a
+            given phone after this build, the remaining suspect
+            sits in the Firebase console identity (the shared
+            project's API key / interim appId), not in this
+            code — the app now records a diagnostic counter for
+            exactly that case. (2) FEED SCROLL FELT JAMMED /
+            SLOW — the pager now pre-builds the previous and
+            next pages, so the next video's player initialises
+            and buffers while you watch the current one instead
+            of starting cold at the swipe; while a player loads,
+            the video's own first-frame picture fills the screen
+            instead of a black spinner; cards repaint in
+            isolation. The look and every feature (progress
+            line, shuffle, pull-down refresh popup, overlays)
+            are unchanged. Everything from test-apk-18 stays:
+            pull-down-only refresh with the top popup
+            ("Refreshing…" → "Feed refreshed — new videos"),
+            the bigger/bolder white "+" on the black create
+            button. Everything from test-apk-17 stays (feed
             freshness: per-session shuffle, a reopen never
             starts on the same video when the pool offers an
             alternative; the Following tab stays newest-first),
