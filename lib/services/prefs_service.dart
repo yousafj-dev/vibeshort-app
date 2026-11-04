@@ -10,6 +10,7 @@ class PrefsService {
 
   static const String _dataSaverKey = 'vibeshort_data_saver';
   static const String _lightThemeKey = 'vibeshort_light_theme';
+  static const String _lastFeedFirstKey = 'vibeshort_last_feed_first_id';
 
   /// Data Saver: when true the feed plays the lighter 540p
   /// Cloudinary variant instead of the 720p one. Read
@@ -26,6 +27,13 @@ class PrefsService {
   static final ValueNotifier<bool> themeNotifier =
       ValueNotifier<bool>(false);
 
+  /// Id of the video the For You feed opened on in the most
+  /// recent session (test-apk-17 feed freshness). The home feed
+  /// reads it synchronously when a session's shuffled order is
+  /// established and never starts a new session on this video
+  /// when the pool offers an alternative. Null on first run.
+  static String? lastFeedFirstId;
+
   static Future<void> load() async {
     try {
       final p = await SharedPreferences.getInstance();
@@ -33,8 +41,19 @@ class PrefsService {
       lightTheme = p.getBool(_lightThemeKey) ?? false;
       AppTheme.lightMode = lightTheme;
       themeNotifier.value = lightTheme;
+      lastFeedFirstId = p.getString(_lastFeedFirstKey);
     } catch (e) {
       debugPrint('PrefsService.load failed: $e');
+    }
+  }
+
+  static Future<void> setLastFeedFirstId(String id) async {
+    lastFeedFirstId = id;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(_lastFeedFirstKey, id);
+    } catch (e) {
+      debugPrint('PrefsService.setLastFeedFirstId failed: $e');
     }
   }
 

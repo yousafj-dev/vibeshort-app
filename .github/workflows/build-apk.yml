@@ -39,7 +39,19 @@ jobs:
           tag_name: test-apk-${{ github.run_number }}
           name: VibeShort test APK #${{ github.run_number }}
           body: |
-            NEW IN THIS BUILD (test-apk-16): (1) New logo —
+            NEW IN THIS BUILD (test-apk-17): FEED FRESHNESS —
+            the For You feed no longer opens on the same video
+            every time. The video pool is shuffled once per app
+            session, and the app remembers the last session's
+            first video so a reopen never starts on it again
+            when the pool has an alternative. A new "Refresh"
+            pill at the top of the feed (next to Following /
+            For You) re-shuffles the feed, jumps back to the
+            first video, and a "Feed refreshed — new videos"
+            chip confirms it; pull-down on the first video and
+            re-tapping Home do the same refresh. The Following
+            tab stays newest-first, unchanged. Everything from
+            test-apk-16 stays: (1) New logo —
             Logo 1 "Play-V" is now the launcher icon and the
             in-app logo (splash + login). (2) Animated splash:
             the V draws in, the play triangle pops with a glow,
