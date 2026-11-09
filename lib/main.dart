@@ -16,23 +16,26 @@ import 'package:vibeshort/screens/splash/splash_screen.dart';
 /// (vibeshort_users / vibeshort_videos), so nothing collides with
 /// the other apps using this project.
 const FirebaseOptions _firebaseOptions = FirebaseOptions(
-  apiKey: 'AIzaSyAwD-dF5rY_ULv9e-7uLhQKAMGQ78c93EA',
+  apiKey: 'AIzaSyBy9f8qG58HhBUQVm7jzlwpi1cJtAl-yDk',
   authDomain: 'quizistan-academy.firebaseapp.com',
   projectId: 'quizistan-academy',
   storageBucket: 'quizistan-academy.firebasestorage.app',
   messagingSenderId: '606589084724',
-  // Fix round 3 (login not persisting): this used to be the
-  // project's WEB appId ('...:web:...'). Firebase Auth's Android
-  // session store is keyed to a REGISTERED ANDROID app identity —
-  // running an Android build under a web appId leaves the session
-  // in memory only, so every process death (e.g. swipe away from
-  // Recents) came back signed out, even though the app-side gate
-  // was correct. The value below is the Android appId registered
-  // for this project in the Firebase console (interim identity
-  // for com.vibeshort.app until the package gets its own console
-  // registration; Auth users and Firestore data are project-wide,
-  // so accounts and content are unaffected).
-  appId: '1:606589084724:android:a5536fead83abb85eb5661',
+  // test-apk-20: VibeShort now runs under its OWN registered
+  // Android identity. On Nov 9, 2026 the package com.vibeshort.app
+  // was registered in the Firebase console (app nickname
+  // "VibeShort") and the values below come from that
+  // registration's google-services.json. What was wrong before:
+  // the appId below used to be the Android appId registered for
+  // com.chaska.app (an interim borrowed identity adopted in fix
+  // round 3), and the apiKey was not one of the keys in this
+  // project's current google-services.json at all. Firebase
+  // Auth's Android session store and token refresh are keyed to
+  // the registered app identity, so a session created at login
+  // was not recognised on the next cold start and the app asked
+  // for login again and again. Auth users and Firestore data are
+  // project-wide, so accounts and content are unaffected.
+  appId: '1:606589084724:android:f25634e87b5f0740eb5661',
 );
 
 /// Initializes the default Firebase app, with ONE retry after a
