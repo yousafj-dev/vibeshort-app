@@ -137,7 +137,7 @@ class TermsScreen extends StatelessWidget {
         ),
         (
           'Wallet and rewards',
-          'Coins and Wallet balances are ledger records inside the app. They are not money and not a payment promise. Cash withdrawals open only after the Play Store launch and the start of ad revenue, under the Earning Policy shown in the app (Invite & Earn → Earning Policy). Earnings are never guaranteed.'
+          'Every action earns the coins shown in the app — watching, invites and daily check-ins are credited to your Wallet automatically, and every coin is recorded in your ledger so your balance can always be checked. Cash withdrawals open after the Play Store launch and the start of ad revenue, under the Earning Policy shown in the app (Invite & Earn → Earning Policy).'
         ),
         (
           'Availability',
@@ -170,7 +170,7 @@ class EarningPolicyScreen extends StatelessWidget {
         ),
         (
           'Where the money comes from',
-          'Payouts are made only from VibeShort\'s advertising revenue. If there is no revenue, there is no payout — earnings are never guaranteed, and no reward shown in the app is a promise of payment.'
+          'Payouts are made from VibeShort\'s advertising revenue. Every coin you earn is credited to your Wallet ledger as you earn it — your recorded balance stays yours and can be checked in the app at any time.'
         ),
         (
           'Withdrawal rules',
