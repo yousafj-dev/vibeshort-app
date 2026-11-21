@@ -414,7 +414,8 @@ class _EarnScreenState extends State<EarnScreen> {
                   'revenue starts — payouts come only from that '
                   'revenue. Minimum withdrawal '
                   'Rs 500 (5,000 coins) to Easypaisa / JazzCash. '
-                  'Earnings are never guaranteed.',
+                  'Every coin you earn is credited to your Wallet '
+                  'automatically.',
                   style: TextStyle(
                       color: AppTheme.text.withOpacity(0.7), fontSize: 13, height: 1.4),
                 ),
