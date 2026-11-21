@@ -352,7 +352,7 @@ class _WalletScreenState extends State<WalletScreen> {
       'Only your available balance can be withdrawn. Pending rewards cannot be withdrawn.',
       'Every withdrawal request is reviewed manually before any payout is made.',
       'If a request is rejected, the held amount returns to your available balance in the ledger.',
-      'Rewards depend on campaigns and eligibility rules. Earnings are never guaranteed.',
+      'Coins for every action are credited to your Wallet automatically — 1,000 coins = Rs 100.',
       'For a dispute, contact support and quote the transaction reference from your history.',
     ];
     return Container(
