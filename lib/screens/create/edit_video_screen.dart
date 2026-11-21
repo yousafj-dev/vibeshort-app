@@ -105,6 +105,14 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   bool _posting = false;
   bool _processing = false;
   double _progress = 0;
+
+  /// Bake progress (0.0–1.0) reported by VideoEditService while
+  /// [_processing]; the upload phase keeps using [_progress].
+  double _processProgress = 0;
+
+  /// Set by the processing overlay's Cancel button so the post
+  /// unwinds silently (no error message) once the bake stops.
+  bool _cancelRequested = false;
   String? _error;
 
   @override
@@ -290,6 +298,14 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
     _player?.setVolume(mode == MusicMode.mute ? 0 : 1);
   }
 
+  /// Cancel button on the processing overlay: stops the FFmpeg
+  /// bake; the pending [_post] then unwinds without uploading
+  /// anything and without showing an error.
+  Future<void> _cancelProcessing() async {
+    _cancelRequested = true;
+    await VideoEditService.instance.cancelCurrentProcessing();
+  }
+
   Future<void> _post() async {
     if (AuthService.instance.uid == null) {
       setState(() => _error = 'Please log in first to post.');
@@ -302,6 +318,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       _posting = true;
       _processing = _hasEdits;
       _progress = 0;
+      _processProgress = 0;
+      _cancelRequested = false;
       _error = null;
     });
 
@@ -314,15 +332,22 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           videoDuration: player.value.duration,
           videoHeight: player.value.size.height.round(),
           videoWidth: player.value.size.width.round(),
+          onProgress: (p) {
+            if (mounted) setState(() => _processProgress = p);
+          },
         );
       }
     } catch (e) {
       // Processing failed: do NOT silently upload the unedited file.
+      // A user-requested cancel lands here too — that one unwinds
+      // quietly, with no error message.
       if (!mounted) return;
       setState(() {
         _posting = false;
         _processing = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        if (!_cancelRequested) {
+          _error = e.toString().replaceFirst('Exception: ', '');
+        }
       });
       return;
     }
@@ -516,21 +541,48 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           if (_processing)
             Container(
               color: Colors.black87,
-              child: const Center(
+              child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(color: AppTheme.accent),
-                    SizedBox(height: 16),
-                    Text('Processing…',
+                    const CircularProgressIndicator(
+                        color: AppTheme.accent),
+                    const SizedBox(height: 16),
+                    const Text('Processing…',
                         style: TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             fontWeight: FontWeight.w600)),
-                    SizedBox(height: 6),
-                    Text('Applying your edits to the video',
+                    const SizedBox(height: 6),
+                    const Text('Applying your edits to the video',
                         style:
                             TextStyle(color: Colors.white60, fontSize: 13)),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: 220,
+                      child: LinearProgressIndicator(
+                        value:
+                            _processProgress > 0 ? _processProgress : null,
+                        backgroundColor: AppTheme.cardDark,
+                        color: AppTheme.accent,
+                        minHeight: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${(_processProgress * 100).round()}%',
+                      style: const TextStyle(
+                          color: Colors.white60, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _cancelProcessing,
+                      child: const Text('Cancel',
+                          style: TextStyle(
+                              color: Color(0xFFFF5C7A),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                    ),
                   ],
                 ),
               ),
