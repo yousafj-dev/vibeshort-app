@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:vibeshort/services/face_effects.dart';
 
@@ -662,6 +664,21 @@ class VideoEditService {
   static const _failMsg =
       'Video processing failed. Please try again with different edits.';
 
+  /// Session id of the bake currently running, if any. Set while
+  /// [processVideo] executes so the UI can cancel it through
+  /// [cancelCurrentProcessing].
+  int? _activeSessionId;
+
+  /// Cancels the in-flight [processVideo] bake, if one is running.
+  /// The pending call then fails like any other processing error
+  /// (it never falls back to the unedited file).
+  Future<void> cancelCurrentProcessing() async {
+    final id = _activeSessionId;
+    if (id != null) {
+      await FFmpegKit.cancel(id);
+    }
+  }
+
   static String _secs(Duration d) =>
       (d.inMilliseconds / 1000.0).toStringAsFixed(3);
 
@@ -671,6 +688,7 @@ class VideoEditService {
     required Duration videoDuration,
     required int videoHeight,
     int videoWidth = 0,
+    void Function(double progress)? onProgress,
   }) async {
     final tmp = await getTemporaryDirectory();
     final out = File(
@@ -684,6 +702,36 @@ class VideoEditService {
         effDur < videoDuration &&
         (start > Duration.zero || end != null);
     if (!trimmed) effDur = videoDuration;
+
+    // Performance cap: the filter graphs run per pixel (blur and
+    // split/blend chains especially), so baking at a phone camera's
+    // full 1080p/4K resolution takes minutes on a budget device.
+    // When the source exceeds a 720p-class box, the bake works at
+    // the capped size instead — the feed never displays more.
+    // [capChain] is prepended to the filter chain (and leads the
+    // face graph); [effVideoWidth]/[effVideoHeight] are the capped
+    // dimensions, used wherever sizes are computed in pixels
+    // (overlay text, face sticker placement) so they stay
+    // proportional to the frame actually baked.
+    const capMaxW = 720;
+    const capMaxH = 1280;
+    var effVideoWidth = videoWidth;
+    var effVideoHeight = videoHeight;
+    String? capChain;
+    if (videoWidth > 0 &&
+        videoHeight > 0 &&
+        (videoWidth > capMaxW || videoHeight > capMaxH)) {
+      final scaleW = capMaxW / videoWidth;
+      final scaleH = capMaxH / videoHeight;
+      final s = scaleW < scaleH ? scaleW : scaleH;
+      effVideoWidth = (videoWidth * s).floor();
+      effVideoHeight = (videoHeight * s).floor();
+      if (effVideoWidth.isOdd) effVideoWidth -= 1;
+      if (effVideoHeight.isOdd) effVideoHeight -= 1;
+      capChain = "scale='min($capMaxW,iw)':'min($capMaxH,ih)'"
+          ':force_original_aspect_ratio=decrease,'
+          'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+    }
 
     // Build the video filter chain: a selected effect replaces the
     // colour filter (its graph includes its own grade); text is last.
@@ -713,13 +761,19 @@ class VideoEditService {
         OverlayPosition.center => '(h-text_h)/2',
         OverlayPosition.bottom => 'h-text_h-h*0.09',
       };
-      final fontSize = (videoHeight / 17).round().clamp(24, 96);
+      final fontSize = (effVideoHeight / 17).round().clamp(24, 96);
       textFilter = "drawtext=fontfile=${font.path}"
           ":text='${_sanitize(text)}'"
           ':fontcolor=white:fontsize=$fontSize'
           ':borderw=3:bordercolor=black'
           ':x=(w-text_w)/2:y=$y';
       vfParts.add(textFilter);
+    }
+    // The cap leads the chain so every filter after it works on
+    // the smaller frame. No chain (e.g. a mute-only post, which
+    // stream-copies) means no bake, so nothing to cap.
+    if (capChain != null && vfParts.isNotEmpty) {
+      vfParts.insert(0, capChain);
     }
     final vf = vfParts.isEmpty ? null : vfParts.join(',');
 
@@ -769,8 +823,9 @@ class VideoEditService {
         stickerIndex: stickerIndex,
         segments: faceSegs!,
         track: face!.track,
-        videoWidth: videoWidth,
-        videoHeight: videoHeight,
+        videoWidth: effVideoWidth,
+        videoHeight: effVideoHeight,
+        capChain: capChain,
         baseChain: baseChain,
         textFilter: textFilter,
       );
@@ -779,13 +834,13 @@ class VideoEditService {
         case MusicMode.original:
           args.addAll([
             '-map', '0:a?',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23',
             '-c:a', 'aac', '-b:a', '128k',
           ]);
           break;
         case MusicMode.mute:
           args.addAll([
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23',
             '-an',
           ]);
           break;
@@ -794,7 +849,7 @@ class VideoEditService {
           final fadeStart = (dur - 2).clamp(0.0, dur);
           args.addAll([
             '-map', '1:a:0',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+            '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23',
             '-af', 'afade=t=out:st=$fadeStart:d=2',
             '-c:a', 'aac', '-b:a', '160k',
             '-shortest',
@@ -806,14 +861,14 @@ class VideoEditService {
       case MusicMode.original:
         if (vf != null) args.addAll(['-vf', vf]);
         args.addAll([
-          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+          '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23',
           '-c:a', 'aac', '-b:a', '128k',
         ]);
         break;
       case MusicMode.mute:
         if (vf != null || trimmed) {
           if (vf != null) args.addAll(['-vf', vf]);
-          args.addAll(['-c:v', 'libx264', '-preset', 'veryfast',
+          args.addAll(['-c:v', 'libx264', '-preset', 'superfast',
               '-crf', '23']);
         } else {
           args.addAll(['-c:v', 'copy']);
@@ -827,7 +882,7 @@ class VideoEditService {
         if (vf != null) args.addAll(['-vf', vf]);
         args.addAll([
           '-map', '0:v:0', '-map', '1:a:0',
-          '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+          '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23',
           '-af', 'afade=t=out:st=$fadeStart:d=2',
           '-c:a', 'aac', '-b:a', '160k',
           '-shortest',
@@ -839,14 +894,42 @@ class VideoEditService {
     args.addAll(['-movflags', '+faststart', out.path]);
 
     debugPrint('FFmpeg args: ${args.join(' ')}');
-    final session = await FFmpegKit.executeWithArguments(args);
-    final rc = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(rc) || !await out.exists()) {
-      final log = await session.getOutput();
-      debugPrint('FFmpeg failed (rc=$rc): $log');
-      throw Exception(_failMsg);
+    // Async execution: the statistics callback reports progress
+    // (processed time vs the effective duration) and registering
+    // the session id lets the UI cancel the bake through
+    // [cancelCurrentProcessing]. Completion arrives on the
+    // complete callback; a cancelled session ends with a cancel
+    // return code and fails below like any other bad bake.
+    final done = Completer<FFmpegSession>();
+    final totalMs = effDur.inMilliseconds;
+    final session = await FFmpegKit.executeWithArgumentsAsync(
+      args,
+      (s) {
+        if (!done.isCompleted) done.complete(s);
+      },
+      null,
+      onProgress == null
+          ? null
+          : (stats) {
+              if (totalMs > 0) {
+                onProgress(
+                    (stats.getTime() / totalMs).clamp(0.0, 1.0).toDouble());
+              }
+            },
+    );
+    _activeSessionId = session.getSessionId();
+    try {
+      final finished = await done.future;
+      final rc = await finished.getReturnCode();
+      if (!ReturnCode.isSuccess(rc) || !await out.exists()) {
+        final log = await finished.getOutput();
+        debugPrint('FFmpeg failed (rc=$rc): $log');
+        throw Exception(_failMsg);
+      }
+      return out;
+    } finally {
+      _activeSessionId = null;
     }
-    return out;
   }
 
   /// Builds the filter_complex for a face-sticker bake:
@@ -866,13 +949,23 @@ class VideoEditService {
     required FaceTrackData track,
     required int videoWidth,
     required int videoHeight,
+    required String? capChain,
     required String? baseChain,
     required String? textFilter,
   }) {
+    // [videoWidth]/[videoHeight] are the EFFECTIVE (possibly
+    // capped) frame size: the cap stage runs first in the graph,
+    // so the sticker scale factors below map the logged face rects
+    // into the capped frame the overlays are drawn on.
     final sx = videoWidth / track.imageSize.width;
     final sy = videoHeight / track.imageSize.height;
     final n = segments.length;
     final g = StringBuffer();
+    var cur = '0:v';
+    if (capChain != null) {
+      g.write('[0:v]$capChain[fcap];');
+      cur = 'fcap';
+    }
     if (n > 1) {
       g.write('[$stickerIndex:v]split=$n');
       for (var i = 0; i < n; i++) {
@@ -887,7 +980,6 @@ class VideoEditService {
       final h = (s.rect.height * sy).round().clamp(2, 8192);
       g.write('[$src]scale=$w:$h[fst$i];');
     }
-    var cur = '0:v';
     for (var i = 0; i < n; i++) {
       final s = segments[i];
       final x = (s.rect.left * sx).round();
