@@ -14,9 +14,10 @@ import 'package:vibeshort/screens/wallet/wallet_screen.dart';
 /// Shows the coin balance (derived from the same ledger as the
 /// Wallet) with its Rs equivalent, the user's invite code with
 /// copy + share, invite stats, the daily check-in claim, how it
-/// works, and the honest earning policy: coins are collected
-/// now, cash withdrawals open only after the Play Store launch
-/// and the start of ad revenue. No guaranteed-earnings language
+/// works, and the honest earning policy: coins are credited as
+/// they are earned, and cash withdrawals are open — requests
+/// are reviewed first, then paid to the user's Easypaisa,
+/// JazzCash or bank account. No guaranteed-earnings language
 /// anywhere on this screen.
 class EarnScreen extends StatefulWidget {
   const EarnScreen({super.key});
@@ -149,8 +150,8 @@ class _EarnScreenState extends State<EarnScreen> {
           const SizedBox(height: 8),
           Text(
             'Minimum withdrawal ${formatPkr(WalletRules.minWithdrawalPkr.toDouble())} '
-            '= ${formatCoins(CoinRules.minWithdrawalCoins)} coins. '
-            'Withdrawals open after the Play Store launch.',
+            '= ${formatCoins(CoinRules.minWithdrawalCoins)} coins, '
+            'paid to Easypaisa, JazzCash or your bank account.',
             style: const TextStyle(color: Colors.white70, fontSize: 12.5),
           ),
         ],
@@ -409,13 +410,11 @@ class _EarnScreenState extends State<EarnScreen> {
               SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Coins are being collected now. Cash withdrawals open '
-                  'after VibeShort launches on the Play Store and ad '
-                  'revenue starts — payouts come only from that '
-                  'revenue. Minimum withdrawal '
-                  'Rs 500 (5,000 coins) to Easypaisa / JazzCash. '
-                  'Every coin you earn is credited to your Wallet '
-                  'automatically.',
+                  'Withdraw your coins to Easypaisa, JazzCash or '
+                  'your bank account. Requests are reviewed first, '
+                  'then the money is sent to your account. Minimum '
+                  'withdrawal Rs 500 (5,000 coins). Every coin you '
+                  'earn is credited to your Wallet automatically.',
                   style: TextStyle(
                       color: AppTheme.text.withOpacity(0.7), fontSize: 13, height: 1.4),
                 ),
