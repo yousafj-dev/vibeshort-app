@@ -36,9 +36,11 @@ import 'package:vibeshort/widgets/main_shell.dart';
 /// login screen regardless (test-apk-18 retest). test-apk-19
 /// replaced the window with the standard pattern inside
 /// AuthService (currentUser + authStateChanges first event +
-/// a 3 s fuse for the marker case), so resolution now lands
-/// within ~3 s worst case and about a second in the healthy
-/// case. The only timer left here is an 8 s last-resort
+/// a 6 s fuse for the marker case — widened in test-apk-75,
+/// which also added an idTokenChanges second signal and a
+/// login-screen self-heal for restores that land later
+/// still), so resolution now lands within ~6 s worst case
+/// and about a second in the healthy case. The only timer left here is an 8 s last-resort
 /// backstop that settles from the live session if the auth
 /// stream somehow never delivers — pure paranoia, expected
 /// never to fire.
@@ -81,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen>
       });
     _ctrl.forward();
     // Last-resort backstop (test-apk-19): AuthService now
-    // guarantees resolution within ~3s of subscription (its
+    // guarantees resolution within ~6s of subscription (its
     // short fuse), so this should never fire — but if the auth
     // stream somehow never delivers, settle from the live
     // session (either way) instead of trapping the user here.
@@ -280,7 +282,7 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                     ),
                   // A previous session exists and the gate is in
-                  // its brief (≤3s) fuse — say so instead of a
+                  // its brief (≤6s) fuse — say so instead of a
                   // bare spinner. (The ~10s version of this cue
                   // was the old 12s restore window, removed in
                   // test-apk-19.)
