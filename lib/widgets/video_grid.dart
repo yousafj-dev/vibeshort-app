@@ -70,7 +70,7 @@ class VideoGrid extends StatelessWidget {
 
   Widget _fallback() {
     return Container(
-      decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+      decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
       child: const Center(
         child:
             Icon(Icons.play_circle_outline, color: Colors.white70, size: 30),
