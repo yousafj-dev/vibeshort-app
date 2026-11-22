@@ -21,7 +21,7 @@ class HashtagVideosScreen extends StatelessWidget {
         stream: FirestoreService.instance.videosByHashtag(tag),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           final videos = snap.data ?? const <VibeVideo>[];
