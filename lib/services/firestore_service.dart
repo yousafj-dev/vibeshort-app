@@ -839,6 +839,26 @@ class FirestoreService {
     }
   }
 
+  /// MY team: everyone who signed up with my referral code, each
+  /// paired with the friend's username resolved from their
+  /// profile doc ('VibeShort user' when the profile has no
+  /// username yet or cannot be read). Built on [myReferrals] plus
+  /// one profile read per member — team sizes are small, so no
+  /// extra query or index is needed.
+  Stream<List<VibeTeamMember>> myTeam() {
+    return myReferrals().asyncMap((refs) async {
+      final members = <VibeTeamMember>[];
+      for (final r in refs) {
+        var name = 'VibeShort user';
+        final profile = await getUserProfile(r.referredUserId);
+        final username = profile?.username.trim() ?? '';
+        if (username.isNotEmpty) name = username;
+        members.add(VibeTeamMember(referral: r, username: name));
+      }
+      return members;
+    });
+  }
+
   /// Submits a withdrawal request (blueprint Section 3 journey):
   /// the user checks their AVAILABLE balance against the minimum
   /// payout rule, then submits amount + payout method + account
