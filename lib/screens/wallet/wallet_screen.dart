@@ -99,7 +99,7 @@ class _WalletScreenState extends State<WalletScreen> {
               _sectionTitle('Transaction history'),
               const SizedBox(height: 8),
               if (txSnap.connectionState == ConnectionState.waiting)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.all(24),
                   child: Center(
                     child: CircularProgressIndicator(color: AppTheme.accent),
@@ -370,7 +370,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('• ',
+                    Text('• ',
                         style: TextStyle(color: AppTheme.accent)),
                     Expanded(
                       child: Text(
@@ -409,7 +409,8 @@ class _WalletScreenState extends State<WalletScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${formatPkr(w.amount)} → ${w.payoutMethod}',
+                  '${formatPkr(w.amount)} → ${w.payoutMethod}'
+                  '${w.payoutAccountTitle.isNotEmpty ? ' • ${w.payoutAccountTitle}' : ''}',
                   style: TextStyle(
                       color: AppTheme.text, fontWeight: FontWeight.w700),
                 ),
@@ -521,6 +522,7 @@ class _WalletScreenState extends State<WalletScreen> {
     final idempotencyKey =
         'wd_${uid}_${DateTime.now().microsecondsSinceEpoch}';
     final amountCtrl = TextEditingController();
+    final titleCtrl = TextEditingController();
     final accountCtrl = TextEditingController();
     var method = WalletRules.payoutMethods.first;
     var busy = false;
@@ -545,11 +547,21 @@ class _WalletScreenState extends State<WalletScreen> {
                 TextField(
                   controller: amountCtrl,
                   keyboardType: TextInputType.number,
+                  onChanged: busy ? null : (_) => setLocal(() {}),
                   decoration: const InputDecoration(
                     hintText: 'Amount (Rs)',
                     prefixIcon: Icon(Icons.payments_outlined),
                   ),
                 ),
+                if ((double.tryParse(amountCtrl.text.trim()) ?? 0) >
+                    0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '= ${formatCoins(((double.tryParse(amountCtrl.text.trim()) ?? 0) * CoinRules.coinsPerRupee).round())} coins',
+                    style: TextStyle(
+                        color: AppTheme.muted, fontSize: 12),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   value: method,
@@ -568,11 +580,26 @@ class _WalletScreenState extends State<WalletScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: accountCtrl,
-                  keyboardType: TextInputType.phone,
+                  controller: titleCtrl,
+                  keyboardType: TextInputType.name,
                   decoration: const InputDecoration(
-                    hintText: 'Account number (e.g. 03XX-XXXXXXX)',
-                    prefixIcon: Icon(Icons.phone_android_outlined),
+                    hintText: 'Account title (account holder name)',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: accountCtrl,
+                  keyboardType: method == WalletRules.bankMethod
+                      ? TextInputType.text
+                      : TextInputType.phone,
+                  decoration: InputDecoration(
+                    hintText: method == WalletRules.bankMethod
+                        ? 'IBAN (e.g. PK36 XXXX 0000 0000 0000 00)'
+                        : 'Account number (e.g. 03XX-XXXXXXX)',
+                    prefixIcon: Icon(method == WalletRules.bankMethod
+                        ? Icons.account_balance_outlined
+                        : Icons.phone_android_outlined),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -602,6 +629,7 @@ class _WalletScreenState extends State<WalletScreen> {
                           amount: amount,
                           payoutMethod: method,
                           payoutAccount: accountCtrl.text.trim(),
+                          payoutAccountTitle: titleCtrl.text.trim(),
                           idempotencyKey: idempotencyKey,
                         );
                         if (!ctx.mounted) return;
@@ -633,6 +661,7 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
     );
     amountCtrl.dispose();
+    titleCtrl.dispose();
     accountCtrl.dispose();
   }
 }
