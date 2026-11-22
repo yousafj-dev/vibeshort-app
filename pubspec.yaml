@@ -17,6 +17,9 @@ dependencies:
   # Crash reporting: automatic crash reports (device model,
   # Android version, cause) via Firebase Crashlytics.
   firebase_crashlytics: ^4.1.3
+  # Ads: AdMob (Google Mobile Ads). 5.x is the line compatible
+  # with Flutter 3.27.4 / Dart 3.6.
+  google_mobile_ads: ^5.1.0
   video_player: ^2.9.2
   image_picker: ^1.1.2
   shared_preferences: ^2.3.2
