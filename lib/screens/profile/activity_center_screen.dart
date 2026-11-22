@@ -55,7 +55,7 @@ class _VideoList extends StatelessWidget {
       stream: stream,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
+          return Center(
               child: CircularProgressIndicator(color: AppTheme.accent));
         }
         final videos = snap.data ?? const <VibeVideo>[];
