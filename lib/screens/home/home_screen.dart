@@ -238,7 +238,7 @@ class HomeScreenState extends State<HomeScreen>
                                 ),
                               ),
                             ] else ...[
-                              const Icon(Icons.check_circle,
+                              Icon(Icons.check_circle,
                                   size: 15, color: AppTheme.accent),
                               const SizedBox(width: 6),
                               const Text(
@@ -375,7 +375,7 @@ class _FeedPaneState extends State<_FeedPane> {
       stream: followingOnly ? fs.followingFeed() : fs.videoFeed(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
+          return Center(
               child: CircularProgressIndicator(color: AppTheme.accent));
         }
         final pool = snap.data ?? const <VibeVideo>[];
