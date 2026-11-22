@@ -57,7 +57,7 @@ class _OfflineVideosScreenState extends State<OfflineVideosScreen> {
         future: _items,
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           final items = snap.data ?? const <OfflineVideo>[];
@@ -135,7 +135,7 @@ class _OfflineVideosScreenState extends State<OfflineVideosScreen> {
     return Container(
       width: 52,
       height: 68,
-      decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+      decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
       child: const Icon(Icons.play_circle_outline,
           color: Colors.white70, size: 24),
     );
@@ -207,7 +207,7 @@ class _OfflinePlayerScreenState extends State<OfflinePlayerScreen> {
                   style: TextStyle(color: AppTheme.muted)),
             )
           : ctrl == null || !ctrl.value.isInitialized
-              ? const Center(
+              ? Center(
                   child: CircularProgressIndicator(color: AppTheme.accent))
               : GestureDetector(
                   onTap: () {
