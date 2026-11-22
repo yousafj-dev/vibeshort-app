@@ -37,6 +37,10 @@ class VibeUser {
   final bool notifComments;
   final bool notifFollows;
 
+  /// Wallet updates toggle (settings polish round): coin credits
+  /// and withdrawal status changes in the Inbox.
+  final bool notifWallet;
+
   /// 'Everyone' | 'Only me' — who may see my liked videos / my
   /// following list on my profile.
   final String likedVisibility;
@@ -56,6 +60,7 @@ class VibeUser {
     this.notifLikes = true,
     this.notifComments = true,
     this.notifFollows = true,
+    this.notifWallet = true,
     this.likedVisibility = 'Everyone',
     this.followingVisibility = 'Everyone',
   });
@@ -86,6 +91,7 @@ class VibeUser {
       notifLikes: (d['notifLikes'] ?? true) as bool,
       notifComments: (d['notifComments'] ?? true) as bool,
       notifFollows: (d['notifFollows'] ?? true) as bool,
+      notifWallet: (d['notifWallet'] ?? true) as bool,
       likedVisibility: (d['likedVisibility'] ?? 'Everyone') as String,
       followingVisibility: (d['followingVisibility'] ?? 'Everyone') as String,
     );
