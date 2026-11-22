@@ -75,7 +75,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               stream: FirestoreService.instance.allUsers(limit: 500),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(
+                  return Center(
                       child:
                           CircularProgressIndicator(color: AppTheme.accent));
                 }
