@@ -55,7 +55,7 @@ class HelpCenterScreen extends StatelessWidget {
         ),
         (
           'Why is my Wallet balance Rs 0?',
-          'Your balance grows from the coins you earn (invites, daily check-in, watching videos) — 1,000 coins = Rs 100. Every coin is recorded in the Wallet ledger so it can be checked. Cash withdrawals open only after VibeShort launches on the Play Store and ad revenue starts; see Invite & Earn → Earning Policy for the full rules.'
+          'Your balance grows from the coins you earn (invites, daily check-in, watching videos) — 1,000 coins = Rs 100. Every coin is recorded in the Wallet ledger so it can be checked. Once you reach the Rs 500 minimum (5,000 coins), you can withdraw to Easypaisa, JazzCash or your bank account — requests are reviewed first, then the money is sent to your account. See Invite & Earn → Earning Policy for the full rules.'
         ),
         (
           'How do I report a video or a user?',
@@ -100,7 +100,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
         ),
         (
           'Wallet data',
-          'The Wallet runs in test mode: balances and withdrawal requests are bookkeeping records inside the app. No real payment details are collected and no real money is transferred.'
+          'Your Wallet balance, coin ledger and withdrawal requests are stored inside the app. When you request a withdrawal, the payout account title and number (or IBAN) you enter are stored with the request so it can be reviewed and paid.'
         ),
         (
           'Sharing',
@@ -137,7 +137,7 @@ class TermsScreen extends StatelessWidget {
         ),
         (
           'Wallet and rewards',
-          'Every action earns the coins shown in the app — watching, invites and daily check-ins are credited to your Wallet automatically, and every coin is recorded in your ledger so your balance can always be checked. Cash withdrawals open after the Play Store launch and the start of ad revenue, under the Earning Policy shown in the app (Invite & Earn → Earning Policy).'
+          'Every action earns the coins shown in the app — watching, invites and daily check-ins are credited to your Wallet automatically, and every coin is recorded in your ledger so your balance can always be checked. Cash withdrawals are made under the Earning Policy shown in the app (Invite & Earn → Earning Policy): once you reach the minimum, you can request a withdrawal to Easypaisa, JazzCash or your bank account, and requests are reviewed before any payout is sent.'
         ),
         (
           'Availability',
@@ -165,16 +165,16 @@ class EarningPolicyScreen extends StatelessWidget {
           'Invite a friend: when a friend signs up with your invite code AND watches their first video, you get 100 coins and your friend gets 50 welcome coins. Daily check-in: 10 coins once a day. Watching videos: 2 coins per video watched, up to 50 coins a day from watching.'
         ),
         (
-          'When cash withdrawals open',
-          'You can collect coins from today. Cash withdrawals open only AFTER VibeShort launches on the Play Store and advertising revenue starts coming in. Until then, withdrawal requests can be recorded in the Wallet but no cash is paid out.'
+          'Cash withdrawals',
+          'You can collect coins from today, and cash withdrawals are open. Once your available balance reaches the Rs 500 minimum (5,000 coins), request a withdrawal from the Wallet to your Easypaisa, JazzCash or bank account. Every request is reviewed first; once it is approved, the money is sent to the account you gave.'
         ),
         (
-          'Where the money comes from',
-          'Payouts are made from VibeShort\'s advertising revenue. Every coin you earn is credited to your Wallet ledger as you earn it — your recorded balance stays yours and can be checked in the app at any time.'
+          'Your balance',
+          'Every coin you earn is credited to your Wallet ledger as you earn it — your recorded balance stays yours and can be checked in the app at any time.'
         ),
         (
           'Withdrawal rules',
-          'Minimum withdrawal is Rs 500 (5,000 coins), paid to Easypaisa or JazzCash. Only your available balance can be withdrawn. Every request is reviewed manually before any payout is made, and a rejected request returns the held amount to your balance.'
+          'Minimum withdrawal is Rs 500 (5,000 coins), paid to Easypaisa, JazzCash or your bank account. Only your available balance can be withdrawn. Every request is reviewed manually before any payout is made, and a rejected request returns the held amount to your balance.'
         ),
         (
           'Fair use',
