@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -108,11 +109,41 @@ void main() async {
       ? 'VibeShort: Firebase ready'
       : 'VibeShort: Firebase init failed (offline mode)');
   // AdMob: start the Mobile Ads SDK and preload the first
-  // interstitial. Deliberately NOT awaited — ad serving must
-  // never delay or block the first frame, and AdService
+  // interstitial — but ONLY once the auth gate has resolved
+  // (test-apk-75). In test-apk-74 the ads SDK initialized
+  // during the same cold-start window in which FirebaseAuth
+  // restores the persisted session; the Mobile Ads SDK's
+  // native startup (its init provider runs before the app
+  // even starts, plus the Dart-side initialize + interstitial
+  // preload) contends for CPU/IO on a budget phone, and on
+  // the user's phone that pushed the session restore past
+  // the auth gate's fuse — the "login again" bounce came
+  // back in 74 while builds ≤67 (no ads SDK in the startup
+  // path) restored in time. Ads now start the moment the
+  // session state is known: a few seconds later on the very
+  // first launch, never in the restore's way. The 10 s
+  // fallback covers the pathological case where the gate
+  // somehow never notifies (by then the splash backstop has
+  // long since forced a decision). AdService.init() is
+  // guarded, so the double trigger is a no-op, and it
   // swallows every failure (limited serving is expected
   // while the app is under AdMob review).
-  AdService.instance.init();
+  void startAdsWhenAuthKnown() {
+    if (AuthService.instance.authResolved) {
+      AdService.instance.init();
+      return;
+    }
+    void onAuth() {
+      if (!AuthService.instance.authResolved) return;
+      AuthService.instance.removeListener(onAuth);
+      AdService.instance.init();
+    }
+
+    AuthService.instance.addListener(onAuth);
+  }
+
+  startAdsWhenAuthKnown();
+  Timer(const Duration(seconds: 10), () => AdService.instance.init());
   runApp(const VibeShortApp());
 }
 
