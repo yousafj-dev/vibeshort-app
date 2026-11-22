@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 
@@ -10,6 +10,7 @@ class PrefsService {
 
   static const String _dataSaverKey = 'vibeshort_data_saver';
   static const String _lightThemeKey = 'vibeshort_light_theme';
+  static const String _accentKey = 'vibeshort_accent_color';
   static const String _lastFeedFirstKey = 'vibeshort_last_feed_first_id';
 
   /// Data Saver: when true the feed plays the lighter 540p
@@ -27,6 +28,13 @@ class PrefsService {
   static final ValueNotifier<bool> themeNotifier =
       ValueNotifier<bool>(false);
 
+  /// Accent colour (Settings → Appearance → Accent color): a
+  /// DEVICE preference like the theme. The ARGB value is mirrored
+  /// here and in [AppTheme.accent]; [accentNotifier] fires on
+  /// every change so the root widget rebuilds with the new colour.
+  static final ValueNotifier<int> accentNotifier =
+      ValueNotifier<int>(0xFF00C2FF);
+
   /// Id of the video the For You feed opened on in the most
   /// recent session (test-apk-17 feed freshness). The home feed
   /// reads it synchronously when a session's shuffled order is
@@ -41,6 +49,11 @@ class PrefsService {
       lightTheme = p.getBool(_lightThemeKey) ?? false;
       AppTheme.lightMode = lightTheme;
       themeNotifier.value = lightTheme;
+      final accentValue = p.getInt(_accentKey);
+      if (accentValue != null) {
+        AppTheme.accent = Color(accentValue);
+        accentNotifier.value = accentValue;
+      }
       lastFeedFirstId = p.getString(_lastFeedFirstKey);
     } catch (e) {
       debugPrint('PrefsService.load failed: $e');
@@ -64,6 +77,17 @@ class PrefsService {
       await p.setBool(_dataSaverKey, value);
     } catch (e) {
       debugPrint('PrefsService.setDataSaver failed: $e');
+    }
+  }
+
+  static Future<void> setAccent(Color color) async {
+    AppTheme.accent = color;
+    accentNotifier.value = color.value;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_accentKey, color.value);
+    } catch (e) {
+      debugPrint('PrefsService.setAccent failed: $e');
     }
   }
 
