@@ -322,7 +322,7 @@ class _VideoCardState extends State<VideoCard>
       _captionRecognizers.add(recognizer);
       spans.add(TextSpan(
         text: m.group(0),
-        style: const TextStyle(
+        style: TextStyle(
           color: AppTheme.accent,
           fontWeight: FontWeight.w700,
         ),
@@ -498,7 +498,7 @@ class _VideoCardState extends State<VideoCard>
                   title: Text('${s}x',
                       style: TextStyle(color: AppTheme.text)),
                   trailing: _speed == s
-                      ? const Icon(Icons.check, color: AppTheme.accent)
+                      ? Icon(Icons.check, color: AppTheme.accent)
                       : null,
                   onTap: () async {
                     Navigator.of(sheetCtx).pop();
@@ -761,7 +761,7 @@ class _VideoCardState extends State<VideoCard>
                               errorBuilder: (_, __, ___) =>
                                   const SizedBox.shrink(),
                             ),
-                          const Center(
+                          Center(
                             child: CircularProgressIndicator(
                                 color: AppTheme.accent),
                           ),
