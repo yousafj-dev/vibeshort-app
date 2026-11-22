@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:vibeshort/core/route_observer.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
+import 'package:vibeshort/services/ad_service.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/prefs_service.dart';
 import 'package:vibeshort/screens/splash/splash_screen.dart';
@@ -106,6 +107,12 @@ void main() async {
   debugPrint(AuthService.firebaseReady
       ? 'VibeShort: Firebase ready'
       : 'VibeShort: Firebase init failed (offline mode)');
+  // AdMob: start the Mobile Ads SDK and preload the first
+  // interstitial. Deliberately NOT awaited — ad serving must
+  // never delay or block the first frame, and AdService
+  // swallows every failure (limited serving is expected
+  // while the app is under AdMob review).
+  AdService.instance.init();
   runApp(const VibeShortApp());
 }
 
