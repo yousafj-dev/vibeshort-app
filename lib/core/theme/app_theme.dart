@@ -15,15 +15,32 @@ class AppTheme {
   AppTheme._();
 
   // ---- Brand (same in both modes) ----
-  static const Color accent = Color(0xFF00C2FF); // cyan
+  /// The app-wide accent colour (Settings → Appearance → Accent
+  /// color). Mutable on purpose: [PrefsService] sets it from the
+  /// persisted device preference before the first frame and on
+  /// every change, and the root widget rebuilds on the accent
+  /// notifier so the whole tree picks the new colour up — the
+  /// same mechanism as Dark / Light mode.
+  static Color accent = const Color(0xFF00C2FF); // cyan
   static const Color accent2 = Color(0xFF7C4DFF); // violet
 
-  /// Primary cyan → violet gradient.
-  static const LinearGradient primaryGradient = LinearGradient(
-    colors: [accent, accent2],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  /// Accent choices offered in Settings (name, colour). The
+  /// first entry is the brand default.
+  static const List<(String, Color)> accentChoices = [
+    ('Cyan', Color(0xFF00C2FF)),
+    ('Violet', Color(0xFF7C4DFF)),
+    ('Pink', Color(0xFFFF5C7A)),
+    ('Green', Color(0xFF00C853)),
+    ('Orange', Color(0xFFFF8A00)),
+    ('Gold', Color(0xFFFFB300)),
+  ];
+
+  /// Primary accent → violet gradient.
+  static LinearGradient get primaryGradient => LinearGradient(
+        colors: [accent, accent2],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
 
   // ---- Dark palette (default; pinned for always-dark surfaces) ----
   static const Color bgDark = Color(0xFF0A0A12);
@@ -55,7 +72,7 @@ class AppTheme {
   static Color get hairline => lightMode ? hairlineLight : hairlineDark;
 
   static ThemeData dark() {
-    const scheme = ColorScheme.dark(
+    final scheme = ColorScheme.dark(
       primary: accent,
       secondary: accent2,
       surface: cardDark,
@@ -77,7 +94,7 @@ class AppTheme {
   }
 
   static ThemeData light() {
-    const scheme = ColorScheme.light(
+    final scheme = ColorScheme.light(
       primary: accent,
       secondary: accent2,
       surface: cardLight,
