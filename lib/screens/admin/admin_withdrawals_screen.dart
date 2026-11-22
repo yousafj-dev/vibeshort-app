@@ -65,7 +65,7 @@ class _AdminWithdrawalsScreenState extends State<AdminWithdrawalsScreen> {
         stream: FirestoreService.instance.adminWithdrawals(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           final list = snap.data ?? const <VibeWithdrawal>[];
@@ -127,7 +127,8 @@ class _AdminWithdrawalsScreenState extends State<AdminWithdrawalsScreen> {
           ),
           const SizedBox(height: 2),
           Text(
-            '${w.payoutMethod} • ${w.payoutAccount}',
+            '${w.payoutMethod} • ${w.payoutAccount}'
+            '${w.payoutAccountTitle.isNotEmpty ? ' • ${w.payoutAccountTitle}' : ''}',
             style: TextStyle(color: AppTheme.text.withOpacity(0.7), fontSize: 13),
           ),
           const SizedBox(height: 2),
