@@ -27,11 +27,12 @@ class WalletRules {
   static const String bankMethod = 'Bank transfer';
 }
 
-/// Coins earning rules (approved Oct 27, 2026): users collect
-/// COINS now; cash withdrawals open only after the Play Store
-/// launch, once ad revenue starts, and payouts come only from
-/// that revenue (see the in-app Earning Policy page). EVERY
-/// reward number lives here so a rule change is a one-line edit.
+/// Coins earning rules (approved Oct 27, 2026; withdrawal
+/// opening updated Nov 22, 2026): users collect COINS and cash
+/// withdrawals are open — requests are reviewed first, then
+/// paid to the user's Easypaisa, JazzCash or bank account (see
+/// the in-app Earning Policy page). EVERY reward number lives
+/// here so a rule change is a one-line edit.
 ///
 /// Coin credits are written into the SAME ledger as everything
 /// else, with the PKR amount converted at [coinsPerRupee] — so
