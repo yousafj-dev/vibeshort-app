@@ -855,6 +855,7 @@ class FirestoreService {
     required double amount,
     required String payoutMethod,
     required String payoutAccount,
+    String payoutAccountTitle = '',
     required String idempotencyKey,
   }) async {
     final uid = AuthService.instance.uid;
@@ -863,9 +864,25 @@ class FirestoreService {
       throw Exception(
           'Minimum withdrawal is ${formatPkr(WalletRules.minWithdrawalPkr.toDouble())}.');
     }
-    final account = payoutAccount.replaceAll(RegExp(r'[^0-9]'), '');
-    if (account.length < 10 || account.length > 15) {
-      throw Exception('Please enter a valid account number.');
+    final title = payoutAccountTitle.trim();
+    if (title.length < 3) {
+      throw Exception('Please enter the account title (account holder name).');
+    }
+    // Mobile wallets take a digits-only number; bank transfers
+    // take an IBAN (letters + digits, spaces ignored).
+    final String account;
+    if (payoutMethod == WalletRules.bankMethod) {
+      account = payoutAccount.replaceAll(' ', '').toUpperCase();
+      if (account.length < 15 ||
+          account.length > 34 ||
+          !RegExp(r'^[A-Z0-9]+$').hasMatch(account)) {
+        throw Exception('Please enter a valid IBAN for the bank transfer.');
+      }
+    } else {
+      account = payoutAccount.replaceAll(RegExp(r'[^0-9]'), '');
+      if (account.length < 10 || account.length > 15) {
+        throw Exception('Please enter a valid account number.');
+      }
     }
     // Idempotency: same key already submitted -> nothing to do.
     final dup = await _withdrawalRequests
@@ -905,6 +922,7 @@ class FirestoreService {
       'currency': WalletRules.currency,
       'payout_method': payoutMethod,
       'payout_account': account,
+      'payout_account_title': title,
       'status': VibeWithdrawal.statusPendingReview,
       'idempotency_key': idempotencyKey,
       'reviewed_at': null,
