@@ -44,7 +44,7 @@ class _AdminReferralsScreenState extends State<AdminReferralsScreen> {
         stream: FirestoreService.instance.adminReferrals(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           final list = snap.data ?? const <VibeReferral>[];
