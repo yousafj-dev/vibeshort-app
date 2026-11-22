@@ -5,8 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/models/vibe_video.dart';
+import 'package:vibeshort/services/ad_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/services/prefs_service.dart';
+import 'package:vibeshort/widgets/feed_banner_ad.dart';
 import 'package:vibeshort/widgets/video_feed.dart';
 
 /// Home: full-screen vertical feed with TikTok-style top tabs —
@@ -118,8 +120,11 @@ class HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
+      body: Column(
         children: [
+          Expanded(
+            child: Stack(
+              children: [
           TabBarView(
             controller: _tabs,
             children: [
@@ -259,6 +264,14 @@ class HomeScreenState extends State<HomeScreen>
               ),
             ),
           ),
+              ],
+            ),
+          ),
+          // Anchored AdMob banner strip under the feed (above
+          // the shell's bottom nav). Collapses to zero height
+          // while no ad is available, so the feed is unchanged
+          // until serving starts.
+          const FeedBannerAd(),
         ],
       ),
     );
@@ -425,6 +438,10 @@ class _FeedPaneState extends State<_FeedPane> {
           videos: videos,
           onRefresh: refresh,
           hostVisible: widget.hostVisible,
+          // AdMob interstitial cadence: every settled video
+          // change in the home feed counts toward the next
+          // full-screen ad (see AdService for the guards).
+          onVideoChanged: AdService.instance.onFeedVideoChanged,
         );
       },
     );
