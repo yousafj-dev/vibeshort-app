@@ -128,14 +128,20 @@ class VibeShortApp extends StatelessWidget {
         // tree, whose chrome colors read AppTheme's mode-aware
         // getters at build time).
         valueListenable: PrefsService.themeNotifier,
-        builder: (context, light, _) => MaterialApp(
-          title: 'VibeShort',
-          debugShowCheckedModeBanner: false,
-          theme: light ? AppTheme.light() : AppTheme.dark(),
-          // Feed cards subscribe to this observer so playback
-          // pauses while another page covers the feed.
-          navigatorObservers: [appRouteObserver],
-          home: const SplashScreen(),
+        builder: (context, light, _) => ValueListenableBuilder<int>(
+          // Accent colour (Settings → Appearance): same rebuild
+          // mechanism as the theme — a change rebuilds MaterialApp
+          // and with it the whole tree.
+          valueListenable: PrefsService.accentNotifier,
+          builder: (context, accentValue, __) => MaterialApp(
+            title: 'VibeShort',
+            debugShowCheckedModeBanner: false,
+            theme: light ? AppTheme.light() : AppTheme.dark(),
+            // Feed cards subscribe to this observer so playback
+            // pauses while another page covers the feed.
+            navigatorObservers: [appRouteObserver],
+            home: const SplashScreen(),
+          ),
         ),
       ),
     );
