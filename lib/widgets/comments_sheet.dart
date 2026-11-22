@@ -68,7 +68,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
               stream: FirestoreService.instance.comments(widget.video.id),
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(
+                  return Center(
                       child:
                           CircularProgressIndicator(color: AppTheme.accent));
                 }
@@ -151,13 +151,13 @@ class _CommentsSheetState extends State<CommentsSheet> {
                 IconButton(
                   onPressed: _sending ? null : _send,
                   icon: _sending
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: AppTheme.accent),
                         )
-                      : const Icon(Icons.send, color: AppTheme.accent),
+                      : Icon(Icons.send, color: AppTheme.accent),
                 ),
               ],
             ),
