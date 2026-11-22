@@ -42,12 +42,18 @@ class PagedVideoFeed extends StatefulWidget {
   /// viewer, where tab state does not apply.
   final ValueListenable<bool>? hostVisible;
 
+  /// Called whenever the pager settles on a (different) video.
+  /// The home feed uses it to count swipes for the AdMob
+  /// interstitial cadence; null in the standalone viewer.
+  final VoidCallback? onVideoChanged;
+
   const PagedVideoFeed({
     super.key,
     required this.videos,
     this.initialPage = 0,
     this.onRefresh,
     this.hostVisible,
+    this.onVideoChanged,
   });
 
   @override
@@ -137,10 +143,13 @@ class _PagedVideoFeedState extends State<PagedVideoFeed> {
       // keeps adjacent pages in the tree.
       allowImplicitScrolling: true,
       itemCount: videos.length,
-      onPageChanged: (i) => setState(() {
-        _current = i;
-        if (i != 0) _pullPx = 0;
-      }),
+      onPageChanged: (i) {
+        setState(() {
+          _current = i;
+          if (i != 0) _pullPx = 0;
+        });
+        widget.onVideoChanged?.call();
+      },
       itemBuilder: (context, i) => VideoCard(
         key: ValueKey(videos[i].id),
         video: videos[i],
