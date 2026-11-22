@@ -400,6 +400,17 @@ class VibeReferral {
   }
 }
 
+/// One member of MY team (Earn screen list): a [VibeReferral]
+/// plus the friend's username, resolved from their profile doc.
+/// Falls back to 'VibeShort user' when the profile has no
+/// username yet or cannot be read.
+class VibeTeamMember {
+  final VibeReferral referral;
+  final String username;
+
+  const VibeTeamMember({required this.referral, required this.username});
+}
+
 /// Formats a coin count with thousands separators, e.g. 1,250.
 String formatCoins(int coins) {
   final sign = coins < 0 ? '-' : '';
