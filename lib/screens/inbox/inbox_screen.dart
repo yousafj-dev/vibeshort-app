@@ -89,7 +89,7 @@ class _InboxScreenState extends State<InboxScreen> {
             stream: FirestoreService.instance.notifications(),
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Center(
+                return Center(
                     child:
                         CircularProgressIndicator(color: AppTheme.accent));
               }
