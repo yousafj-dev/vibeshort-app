@@ -167,7 +167,7 @@ class _EarnScreenState extends State<EarnScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.calendar_month_outlined,
+          Icon(Icons.calendar_month_outlined,
               color: AppTheme.accent, size: 26),
           const SizedBox(width: 12),
           Expanded(
