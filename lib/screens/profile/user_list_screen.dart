@@ -56,7 +56,7 @@ class UserListScreen extends StatelessWidget {
               stream: users,
               builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(
+                  return Center(
                       child:
                           CircularProgressIndicator(color: AppTheme.accent));
                 }
