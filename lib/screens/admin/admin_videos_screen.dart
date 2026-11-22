@@ -74,7 +74,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
         stream: FirestoreService.instance.adminReports(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           final reports = (snap.data ?? const <VibeReport>[])
@@ -108,7 +108,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
                 future: FirestoreService.instance.getVideo(id),
                 builder: (context, vsnap) {
                   if (vsnap.connectionState == ConnectionState.waiting) {
-                    return const Padding(
+                    return Padding(
                       padding: EdgeInsets.all(18),
                       child: Center(
                           child: CircularProgressIndicator(
@@ -261,7 +261,7 @@ class _AdminVideosScreenState extends State<AdminVideosScreen> {
     return Container(
       width: 54,
       height: 72,
-      decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+      decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
       child: const Icon(Icons.play_circle_outline,
           color: Colors.white70, size: 24),
     );
