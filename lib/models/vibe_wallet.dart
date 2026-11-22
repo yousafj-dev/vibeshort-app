@@ -15,7 +15,16 @@ class WalletRules {
   /// Payout methods a withdrawal can be requested to. The account
   /// number itself is only ever stored as the request's payout
   /// reference (blueprint Section 8) — never shown to other users.
-  static const List<String> payoutMethods = ['Easypaisa', 'JazzCash'];
+  /// 'Bank transfer' (settings polish round) takes an IBAN.
+  static const List<String> payoutMethods = [
+    'Easypaisa',
+    'JazzCash',
+    'Bank transfer',
+  ];
+
+  /// The method string for bank transfers (IBAN validation and
+  /// the wallet form's field hints key off this one value).
+  static const String bankMethod = 'Bank transfer';
 }
 
 /// Coins earning rules (approved Oct 27, 2026): users collect
@@ -287,9 +296,14 @@ class VibeWithdrawal {
   final String currency;
   final String payoutMethod;
 
-  /// The Easypaisa/JazzCash account number the user asked to be
-  /// paid to. Private: only ever read back by its owner here.
+  /// The Easypaisa/JazzCash account number (or bank IBAN) the
+  /// user asked to be paid to. Private: only ever read back by
+  /// its owner here.
   final String payoutAccount;
+
+  /// The account holder's name as the user entered it (settings
+  /// polish round) — the reviewer pays to this exact title.
+  final String payoutAccountTitle;
   final String status;
   final String idempotencyKey;
   final DateTime createdAt;
@@ -302,6 +316,7 @@ class VibeWithdrawal {
     this.currency = WalletRules.currency,
     required this.payoutMethod,
     required this.payoutAccount,
+    this.payoutAccountTitle = '',
     required this.status,
     this.idempotencyKey = '',
     required this.createdAt,
@@ -333,6 +348,7 @@ class VibeWithdrawal {
       currency: (d['currency'] ?? WalletRules.currency) as String,
       payoutMethod: (d['payout_method'] ?? '') as String,
       payoutAccount: (d['payout_account'] ?? '') as String,
+      payoutAccountTitle: (d['payout_account_title'] ?? '') as String,
       status: (d['status'] ?? statusPendingReview) as String,
       idempotencyKey: (d['idempotency_key'] ?? '') as String,
       createdAt: raw is Timestamp ? raw.toDate() : DateTime.now(),
