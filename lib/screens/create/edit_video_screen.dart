@@ -6,6 +6,7 @@ import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/face_effects.dart';
 import 'package:vibeshort/services/firestore_service.dart';
+import 'package:vibeshort/services/sounds_service.dart';
 import 'package:vibeshort/services/storage_service.dart';
 import 'package:vibeshort/services/video_edit_service.dart';
 import 'package:vibeshort/widgets/sounds_sheet.dart';
@@ -93,6 +94,25 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   String? _soundOwnerId;
   OverlayPosition _textPos = OverlayPosition.bottom;
 
+  /// Frame shape (editor round 2): centre-crop baked on post.
+  VideoCropAspect _crop = VideoCropAspect.original;
+
+  /// Song-start picker (editor round 2): [_musicStartSec] is how
+  /// far into the attached track playback begins; [_musicDurSec]
+  /// is the track's length (0 = unknown — the picker stays hidden
+  /// until the length is known: catalogue sounds carry theirs,
+  /// device files are probed with FFprobe).
+  double _musicStartSec = 0;
+  double _musicDurSec = 0;
+
+  /// Text styling (editor round 2): colour (a drawtext value from
+  /// [OverlayTextColors]), size multiplier, bold outline and the
+  /// background box.
+  String _textColor = 'white';
+  double _textScale = 1.0;
+  bool _textBold = true;
+  bool _textBg = false;
+
   /// Face sticker to bake (camera upgrade round): starts as the
   /// sticker recorded with; the user may switch it (the logged
   /// face geometry is sticker-agnostic) or remove it entirely.
@@ -142,8 +162,43 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       _soundId = widget.initialSoundId;
       _soundSourceVideoId = widget.initialSoundSourceVideoId;
       _soundOwnerId = widget.initialSoundOwnerId;
+      _resolveMusicDuration();
     }
     _initPlayer();
+  }
+
+  /// Length of the kept segment — the part of the video the
+  /// attached song has to cover.
+  double get _clipDurSec {
+    if (_durationSec <= 0) return 0;
+    if (!_trimActive) return _durationSec;
+    final kept = _trimEndSec - _trimStartSec;
+    return kept > 0 ? kept : _durationSec;
+  }
+
+  /// Furthest the song may start so it still covers the clip.
+  double get _maxMusicStart {
+    final m = _musicDurSec - _clipDurSec;
+    return m > 0 ? m : 0;
+  }
+
+  /// Learns the attached track's length for the song-start
+  /// picker: catalogue sounds know theirs; anything else is
+  /// probed from the file. A new track resets the start offset.
+  Future<void> _resolveMusicDuration() async {
+    final sid = _soundId;
+    final path = _musicPath;
+    var dur = 0.0;
+    if (sid != null) {
+      dur = (BuiltInSounds.byId(sid)?.durationSec ?? 0).toDouble();
+    } else if (path != null) {
+      dur = await VideoEditService.probeDurationSeconds(path) ?? 0;
+    }
+    if (!mounted) return;
+    setState(() {
+      _musicDurSec = dur;
+      _musicStartSec = 0;
+    });
   }
 
   Future<void> _initPlayer() async {
@@ -194,8 +249,19 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         effect: _effect,
         musicMode: _musicMode,
         musicPath: _musicPath,
+        musicStartOffset: _musicMode == MusicMode.replace
+            ? Duration(
+                milliseconds:
+                    (_musicStartSec.clamp(0, _maxMusicStart) * 1000)
+                        .round())
+            : Duration.zero,
+        cropAspect: _crop,
         overlayText: _overlay.text,
         overlayPosition: _textPos,
+        overlayColor: _textColor,
+        overlaySizeScale: _textScale,
+        overlayBold: _textBold,
+        overlayBackground: _textBg,
         trimStart: _trimActive
             ? Duration(milliseconds: (_trimStartSec * 1000).round())
             : Duration.zero,
@@ -244,6 +310,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         _soundSourceVideoId = null;
         _soundOwnerId = null;
       });
+      _resolveMusicDuration();
     } catch (e) {
       debugPrint('pickMusic failed: $e');
       if (mounted) {
@@ -267,6 +334,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         _soundId = null;
         _soundSourceVideoId = null;
         _soundOwnerId = null;
+        _musicDurSec = 0;
+        _musicStartSec = 0;
       });
       _player?.setVolume(1);
       return;
@@ -281,6 +350,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       _soundOwnerId = null;
     });
     _player?.setVolume(1);
+    _resolveMusicDuration();
   }
 
   void _setMusicMode(MusicMode mode) {
@@ -423,7 +493,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
         actions: [
           TextButton(
             onPressed: _posting ? null : _post,
-            child: const Text('Post',
+            child: Text('Post',
                 style: TextStyle(
                     color: AppTheme.accent,
                     fontSize: 16,
@@ -446,6 +516,10 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                   _trimRow(),
                   const SizedBox(height: 8),
                 ],
+                _sectionLabel('Crop'),
+                const SizedBox(height: 8),
+                _cropRow(),
+                const SizedBox(height: 16),
                 _sectionLabel('Filters'),
                 const SizedBox(height: 8),
                 _filtersRow(),
@@ -480,6 +554,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                       style: TextStyle(
                           color: AppTheme.mutedDark, fontSize: 12)),
                 ],
+                if (_musicMode == MusicMode.replace &&
+                    _maxMusicStart > 0.5) ...[
+                  const SizedBox(height: 10),
+                  _musicStartRow(),
+                ],
                 const SizedBox(height: 16),
                 _sectionLabel('Text on video'),
                 const SizedBox(height: 8),
@@ -494,6 +573,10 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                 ),
                 const SizedBox(height: 8),
                 _positionRow(),
+                const SizedBox(height: 10),
+                _textColorRow(),
+                const SizedBox(height: 10),
+                _textStyleRow(),
                 const SizedBox(height: 16),
                 _sectionLabel('Caption'),
                 const SizedBox(height: 8),
@@ -545,7 +628,7 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const CircularProgressIndicator(
+                    CircularProgressIndicator(
                         color: AppTheme.accent),
                     const SizedBox(height: 16),
                     const Text('Processing…',
@@ -675,10 +758,35 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
           child: inner,
         );
       }
-      video = AspectRatio(
-        aspectRatio: player.value.aspectRatio,
-        child: inner,
-      );
+      final cropTarget = switch (_crop) {
+        VideoCropAspect.portrait => 9 / 16,
+        VideoCropAspect.square => 1.0,
+        VideoCropAspect.landscape => 16 / 9,
+        VideoCropAspect.original => null,
+      };
+      if (cropTarget == null) {
+        video = AspectRatio(
+          aspectRatio: player.value.aspectRatio,
+          child: inner,
+        );
+      } else {
+        // Approximate the baked centre-crop: the frame fills the
+        // target aspect and the overflow is clipped, exactly the
+        // region the crop filter keeps.
+        video = AspectRatio(
+          aspectRatio: cropTarget,
+          child: ClipRect(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: 360,
+                height: 360 / player.value.aspectRatio,
+                child: inner,
+              ),
+            ),
+          ),
+        );
+      }
     }
     final text = _overlay.text.trim();
     return GestureDetector(
@@ -742,20 +850,34 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                   OverlayPosition.center => Alignment.center,
                   OverlayPosition.bottom => const Alignment(0, 0.82),
                 },
-                child: Text(
-                  text,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    shadows: [
-                      Shadow(color: Colors.black, blurRadius: 4),
-                      Shadow(
-                          color: Colors.black,
-                          offset: Offset(1.5, 1.5),
-                          blurRadius: 2),
-                    ],
+                child: Container(
+                  padding: _textBg
+                      ? const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5)
+                      : EdgeInsets.zero,
+                  decoration: _textBg
+                      ? BoxDecoration(
+                          color: Colors.black.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(6),
+                        )
+                      : null,
+                  child: Text(
+                    text,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color:
+                          OverlayTextColors.byDrawtext(_textColor).swatch,
+                      fontSize: 22 * _textScale,
+                      fontWeight:
+                          _textBold ? FontWeight.w800 : FontWeight.w500,
+                      shadows: const [
+                        Shadow(color: Colors.black, blurRadius: 4),
+                        Shadow(
+                            color: Colors.black,
+                            offset: Offset(1.5, 1.5),
+                            blurRadius: 2),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1019,6 +1141,153 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
             ),
           );
         }),
+      ],
+    );
+  }
+
+  /// Frame-shape chips (editor round 2): the bake centre-crops
+  /// the clip to the chosen aspect; Original keeps the source.
+  Widget _cropRow() {
+    const choices = <(VideoCropAspect, String)>[
+      (VideoCropAspect.original, 'Original'),
+      (VideoCropAspect.portrait, '9:16'),
+      (VideoCropAspect.square, '1:1'),
+      (VideoCropAspect.landscape, '16:9'),
+    ];
+    return Wrap(
+      spacing: 8,
+      children: [
+        for (final (aspect, label) in choices)
+          ChoiceChip(
+            label: Text(label),
+            selected: _crop == aspect,
+            onSelected:
+                _posting ? null : (_) => setState(() => _crop = aspect),
+            selectedColor: AppTheme.accent,
+            backgroundColor: AppTheme.cardDark,
+            labelStyle: TextStyle(
+                color: _crop == aspect ? Colors.white : AppTheme.mutedDark,
+                fontWeight: FontWeight.w600),
+            side: BorderSide.none,
+          ),
+      ],
+    );
+  }
+
+  /// Song-start slider (editor round 2): drag to choose which
+  /// part of the attached track plays. Only shown when the track
+  /// is longer than the kept clip, so a start range exists.
+  Widget _musicStartRow() {
+    final maxStart = _maxMusicStart;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Song starts at',
+                style: TextStyle(
+                    color: AppTheme.mutedDark, fontSize: 12.5)),
+            Text(
+              '${_fmt(_musicStartSec)} of ${_fmt(_musicDurSec)}',
+              style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        Slider(
+          value: _musicStartSec.clamp(0, maxStart).toDouble(),
+          min: 0,
+          max: maxStart,
+          activeColor: AppTheme.accent,
+          inactiveColor: Colors.white24,
+          onChanged: _posting
+              ? null
+              : (v) => setState(() => _musicStartSec = v),
+        ),
+      ],
+    );
+  }
+
+  /// Text colour swatches (editor round 2).
+  Widget _textColorRow() {
+    return Row(
+      children: [
+        Text('Color:',
+            style: TextStyle(color: AppTheme.mutedDark, fontSize: 13)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Wrap(
+            spacing: 8,
+            children: [
+              for (final c in OverlayTextColors.all)
+                GestureDetector(
+                  onTap: _posting
+                      ? null
+                      : () => setState(() => _textColor = c.drawtext),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: c.swatch,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _textColor == c.drawtext
+                            ? AppTheme.accent
+                            : Colors.white24,
+                        width: _textColor == c.drawtext ? 2.5 : 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Text size + Bold + Background controls (editor round 2).
+  Widget _textStyleRow() {
+    Widget toggleChip(String label, bool value, ValueChanged<bool> set) {
+      return ChoiceChip(
+        label: Text(label),
+        selected: value,
+        onSelected: _posting ? null : (v) => setState(() => set(v)),
+        selectedColor: AppTheme.accent,
+        backgroundColor: AppTheme.cardDark,
+        labelStyle: TextStyle(
+            color: value ? Colors.white : AppTheme.mutedDark,
+            fontWeight: FontWeight.w600),
+        side: BorderSide.none,
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      children: [
+        for (final (label, scale) in const [
+          ('Small', 0.7),
+          ('Medium', 1.0),
+          ('Large', 1.4),
+        ])
+          ChoiceChip(
+            label: Text(label),
+            selected: _textScale == scale,
+            onSelected:
+                _posting ? null : (_) => setState(() => _textScale = scale),
+            selectedColor: AppTheme.accent,
+            backgroundColor: AppTheme.cardDark,
+            labelStyle: TextStyle(
+                color:
+                    _textScale == scale ? Colors.white : AppTheme.mutedDark,
+                fontWeight: FontWeight.w600),
+            side: BorderSide.none,
+          ),
+        toggleChip('Bold', _textBold, (v) => _textBold = v),
+        toggleChip('Background', _textBg, (v) => _textBg = v),
       ],
     );
   }
