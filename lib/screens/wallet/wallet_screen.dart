@@ -15,10 +15,11 @@ import 'package:vibeshort/screens/wallet/earn_screen.dart';
 /// truth), the transaction history, withdrawal requests, the
 /// published payout rules and the user's referral code.
 ///
-/// Monetization is in TEST MODE: no payment provider is connected
-/// yet, so balances start at Rs 0, nothing here is a promise of
-/// earnings, and withdrawal requests are only recorded for manual
-/// review (the Admin phase) — they are never auto-approved.
+/// Withdrawal requests are recorded for manual review (the
+/// Admin phase) and are never auto-approved; once a request is
+/// approved, the payout is sent to the user's chosen Easypaisa,
+/// JazzCash or bank account. Nothing here is a promise of
+/// earnings — balances come only from coins actually earned.
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
 
@@ -138,11 +139,11 @@ class _WalletScreenState extends State<WalletScreen> {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Coins are being collected now. Cash withdrawals open '
-              'after VibeShort launches on the Play Store and ad '
-              'revenue starts — payouts come only from that revenue. '
-              'Your balance below comes only from your transaction '
-              'ledger — nothing is added by hand.',
+              'Withdraw your coins to Easypaisa, JazzCash or your '
+              'bank account. Requests are reviewed first, then the '
+              'money is sent to your account. Your balance below '
+              'comes only from your transaction ledger — nothing '
+              'is added by hand.',
               style: TextStyle(color: AppTheme.text.withOpacity(0.7), fontSize: 13, height: 1.4),
             ),
           ),
@@ -225,8 +226,8 @@ class _WalletScreenState extends State<WalletScreen> {
         Text(
           'Minimum withdrawal ${formatPkr(WalletRules.minWithdrawalPkr.toDouble())} '
           'from your available balance. Every request is reviewed '
-          'manually before any payout. Withdrawals open after the '
-          'Play Store launch.',
+          'manually before any payout, which is then sent to your '
+          'Easypaisa, JazzCash or bank account.',
           style: TextStyle(color: AppTheme.muted, fontSize: 12.5),
         ),
       ],
@@ -605,8 +606,8 @@ class _WalletScreenState extends State<WalletScreen> {
                 const SizedBox(height: 10),
                 Text(
                   'Your request will be recorded as Pending review. '
-                  'Withdrawals open after the Play Store launch — no '
-                  'payout is sent before then.',
+                  'Once it is approved, the money is sent to the '
+                  'account you entered above.',
                   style: TextStyle(color: AppTheme.muted, fontSize: 12),
                 ),
               ],
