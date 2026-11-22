@@ -63,7 +63,7 @@ class _AdminReportsScreenState extends State<AdminReportsScreen> {
         stream: FirestoreService.instance.adminReports(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           final reports = snap.data ?? const <VibeReport>[];
