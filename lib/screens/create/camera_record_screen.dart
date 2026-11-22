@@ -1371,7 +1371,7 @@ class _CameraRecordScreenState extends State<CameraRecordScreen>
                                             borderRadius:
                                                 BorderRadius.circular(6),
                                           )
-                                        : const BoxDecoration(
+                                        : BoxDecoration(
                                             gradient:
                                                 AppTheme.primaryGradient,
                                             shape: BoxShape.circle,
