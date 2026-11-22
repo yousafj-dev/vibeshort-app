@@ -284,8 +284,10 @@ class _WalletScreenState extends State<WalletScreen> {
                     onPressed: code.isEmpty
                         ? null
                         : () => Share.share(
-                            'Join me on VibeShort! Use my referral code '
-                            '$code when you sign up.'),
+                            'Join me on VibeShort! 📱\n'
+                            'Download the app: https://yousafj-dev.github.io/quizistan-website/vibeshort.html\n'
+                            'Sign up and enter my referral code: $code\n'
+                            'You join my team and we both get free coins! 💰'),
                   ),
                 ],
               );
