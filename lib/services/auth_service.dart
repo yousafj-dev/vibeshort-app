@@ -31,13 +31,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///  * A null event resolves signed-out IMMEDIATELY when there is
 ///    no session marker (never signed in) or an explicit sign-out
 ///    flag is set (Log out / Switch account / Delete account).
-///  * A null event WITH a marker gets one SHORT fuse (3 s, with
-///    a mid-fuse currentUser re-check): if a live user surfaces
+///  * A null event WITH a marker gets one SHORT fuse (6 s, with
+///    a mid-fuse currentUser re-check and an idTokenChanges
+///    second signal — test-apk-75): if a live user surfaces
 ///    in that time the gate resolves signed-in, otherwise it
 ///    resolves signed-out and records a "restore miss" for
 ///    diagnosis — the marker is KEPT (only an explicit sign-out,
 ///    an account deletion, or a fresh sign-in may change it), so
 ///    one bad restore can never break every future launch.
+///  * If the native restore lands only AFTER the gate resolved
+///    signed-out (slow device), the late non-null event still
+///    flips this service to signed-in, and the login screen
+///    follows it home on its own (test-apk-75) — a lost race
+///    can no longer strand a signed-in user on the login form.
+///    An explicit sign-out removes the native session, so no
+///    late event can ever resurrect one.
 ///  * Once resolved signed-in, a stray null event (token-refresh
 ///    / reload edge) never tears the session down; only an
 ///    explicit sign-out does.
@@ -94,11 +102,21 @@ class AuthService extends ChangeNotifier {
   /// the native restore up to [_fuseWindow] to surface a live
   /// user before it accepts "signed out". While the fuse runs —
   /// and only then — the splash may show its restoring cue, so
-  /// the cue can now last at most ~3 s instead of ~10 s.
+  /// the cue can now last at most ~6 s instead of ~10 s.
+  /// test-apk-75 widened the fuse from 3 s: the test-apk-74
+  /// retest showed the bounce surviving on the user's phone
+  /// (signed in and using the app, asked to log in again on
+  /// the next launch minutes later) while every other suspect
+  /// audited clean — FirebaseOptions match the Nov 9 console
+  /// registration exactly, no code path signs out or clears
+  /// data, and sign-in/Firestore demonstrably work — leaving
+  /// the native restore landing just after the 3 s fuse as
+  /// the mechanism. The AuthScreen self-heal (test-apk-75)
+  /// covers any restore that lands later still.
   Timer? _fuseTimer;
   Timer? _fuseRecheck;
   bool _fuseRunning = false;
-  static const Duration _fuseWindow = Duration(seconds: 3);
+  static const Duration _fuseWindow = Duration(seconds: 6);
 
   /// True while a marker-carrying cold start is still
   /// unresolved (the brief fuse period). The splash shows its
@@ -113,6 +131,14 @@ class AuthService extends ChangeNotifier {
   /// transient (token-refresh / reload edge) and ignored UNLESS
   /// this flag says the sign-out was deliberate.
   bool _explicitOut = false;
+
+  /// Startup-only second restore signal (test-apk-75): an
+  /// idTokenChanges subscription that can still deliver the
+  /// restored user after authStateChanges opened with null —
+  /// the restored user is only fully materialised once its
+  /// first ID token is fetched, which is what this stream
+  /// reports. Cancelled as soon as the gate resolves.
+  StreamSubscription<User?>? _startupTokenSub;
 
   FirebaseAuth get _authSafe {
     _auth ??= FirebaseAuth.instance;
@@ -179,6 +205,23 @@ class AuthService extends ChangeNotifier {
       // this build removes; profile changes are applied through
       // the explicit update methods below, not the stream.
       _authSafe.authStateChanges().listen(_onAuthEvent);
+      // test-apk-75: second restore signal. On slow devices
+      // the native session restore can finish AFTER
+      // authStateChanges has already delivered its first
+      // (null) event — the user is only fully materialised
+      // once the first ID token is fetched, which is what
+      // idTokenChanges reports. Feed any non-null token event
+      // into the same handler until the gate resolves; null
+      // token events are ignored here (the authStateChanges
+      // path owns null handling and the fuse).
+      _startupTokenSub = _authSafe.idTokenChanges().listen((u) {
+        if (_authResolved) {
+          _startupTokenSub?.cancel();
+          _startupTokenSub = null;
+          return;
+        }
+        if (u != null) _onAuthEvent(u);
+      });
       notifyListeners();
     } catch (e) {
       debugPrint('AuthService.init failed: $e');
@@ -214,6 +257,8 @@ class AuthService extends ChangeNotifier {
       _user = u;
       _explicitOut = false;
       _cancelFuse();
+      _startupTokenSub?.cancel();
+      _startupTokenSub = null;
       _authResolved = true;
       _markSession(u.uid);
       if (wasUnresolved) {
@@ -236,6 +281,8 @@ class AuthService extends ChangeNotifier {
     if (_explicitOut || _markerUid == null) {
       _user = null;
       _authResolved = true;
+      _startupTokenSub?.cancel();
+      _startupTokenSub = null;
       notifyListeners();
       return;
     }
@@ -264,6 +311,8 @@ class AuthService extends ChangeNotifier {
       // record that a session existed.
       _user = null;
       _authResolved = true;
+      _startupTokenSub?.cancel();
+      _startupTokenSub = null;
       _recordRestoreMiss();
       notifyListeners();
     });
@@ -358,6 +407,8 @@ class AuthService extends ChangeNotifier {
     } catch (_) {}
     if (!force) return;
     _cancelFuse();
+    _startupTokenSub?.cancel();
+    _startupTokenSub = null;
     _user = null;
     _authResolved = true;
     notifyListeners();
