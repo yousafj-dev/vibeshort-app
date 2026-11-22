@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
+import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:vibeshort/services/face_effects.dart';
 
@@ -287,6 +288,40 @@ class VideoEffects {
 /// Where the overlay text sits on the frame.
 enum OverlayPosition { top, center, bottom }
 
+/// Output frame shape (editor round 2): the clip is centre-cropped
+/// to this aspect ratio in the bake, after the performance cap.
+enum VideoCropAspect { original, portrait, square, landscape }
+
+/// One text-overlay colour choice (editor round 2). [drawtext] is
+/// the value baked into the FFmpeg drawtext filter; [swatch] is
+/// the colour shown in the picker and the live preview.
+class OverlayTextColor {
+  final String name;
+  final String drawtext;
+  final Color swatch;
+
+  const OverlayTextColor(this.name, this.drawtext, this.swatch);
+}
+
+class OverlayTextColors {
+  OverlayTextColors._();
+
+  static const List<OverlayTextColor> all = [
+    OverlayTextColor('White', 'white', Colors.white),
+    OverlayTextColor('Yellow', 'yellow', Colors.yellow),
+    OverlayTextColor('Red', 'red', Colors.red),
+    OverlayTextColor('Pink', '0xFF5C7A', Color(0xFFFF5C7A)),
+    OverlayTextColor('Cyan', '0x00C2FF', Color(0xFF00C2FF)),
+    OverlayTextColor('Green', '0x00E676', Color(0xFF00E676)),
+    OverlayTextColor('Black', 'black', Colors.black),
+  ];
+
+  static OverlayTextColor byDrawtext(String value) => all.firstWhere(
+        (c) => c.drawtext == value,
+        orElse: () => all.first,
+      );
+}
+
 /// What happens to the audio on post.
 enum MusicMode { original, mute, replace }
 
@@ -301,8 +336,32 @@ class VideoEditOptions {
 
   /// Audio file path when [musicMode] is [MusicMode.replace].
   final String? musicPath;
+
+  /// Song-start picker (editor round 2): how far into the attached
+  /// track playback begins — "which part of the song plays". Only
+  /// meaningful in [MusicMode.replace]; baked as an atrim offset
+  /// on the (looped) music input.
+  final Duration musicStartOffset;
+
+  /// Centre-crop applied in the bake (editor round 2).
+  final VideoCropAspect cropAspect;
   final String overlayText;
   final OverlayPosition overlayPosition;
+
+  /// drawtext colour value for the overlay (editor round 2) — one
+  /// of [OverlayTextColors]' drawtext values.
+  final String overlayColor;
+
+  /// Overlay font size multiplier (0.7 / 1.0 / 1.4 in the UI).
+  final double overlaySizeScale;
+
+  /// Bold overlay text: a heavier outline in the bake, a heavier
+  /// font weight in the preview. (The bundled drawtext font is a
+  /// single bold face, so weight is expressed via the outline.)
+  final bool overlayBold;
+
+  /// Draws a translucent black box behind the overlay text.
+  final bool overlayBackground;
 
   /// Trim window: the kept segment starts at [trimStart]; [trimEnd]
   /// is null when the segment runs to the end of the clip.
@@ -322,8 +381,14 @@ class VideoEditOptions {
     this.effect = VideoEffects.none,
     this.musicMode = MusicMode.original,
     this.musicPath,
+    this.musicStartOffset = Duration.zero,
+    this.cropAspect = VideoCropAspect.original,
     this.overlayText = '',
     this.overlayPosition = OverlayPosition.bottom,
+    this.overlayColor = 'white',
+    this.overlaySizeScale = 1.0,
+    this.overlayBold = true,
+    this.overlayBackground = false,
     this.trimStart = Duration.zero,
     this.trimEnd,
     this.faceBake,
@@ -333,6 +398,7 @@ class VideoEditOptions {
       effect.ffmpegGraph != null ||
       filter.ffmpegFilter != null ||
       musicMode != MusicMode.original ||
+      cropAspect != VideoCropAspect.original ||
       overlayText.trim().isNotEmpty ||
       trimStart > Duration.zero ||
       trimEnd != null ||
@@ -761,13 +827,44 @@ class VideoEditService {
         OverlayPosition.center => '(h-text_h)/2',
         OverlayPosition.bottom => 'h-text_h-h*0.09',
       };
-      final fontSize = (effVideoHeight / 17).round().clamp(24, 96);
+      final fontSize = (effVideoHeight / 17 * options.overlaySizeScale)
+          .round()
+          .clamp(20, 160);
+      // Black text needs a light outline to stay readable (and
+      // vice versa); the background box, when on, sits behind the
+      // text with padding.
+      final borderColor =
+          options.overlayColor == 'black' ? 'white' : 'black';
       textFilter = "drawtext=fontfile=${font.path}"
           ":text='${_sanitize(text)}'"
-          ':fontcolor=white:fontsize=$fontSize'
-          ':borderw=3:bordercolor=black'
+          ':fontcolor=${options.overlayColor}:fontsize=$fontSize'
+          ':borderw=${options.overlayBold ? 3 : 1}'
+          ':bordercolor=$borderColor'
+          '${options.overlayBackground ? ':box=1:boxcolor=black@0.55:boxborderw=14' : ''}'
           ':x=(w-text_w)/2:y=$y';
       vfParts.add(textFilter);
+    }
+    // Centre-crop to the chosen frame shape (editor round 2). The
+    // expressions compare the input aspect `a` with the target so
+    // a landscape source cropped to 9:16 loses its sides and a
+    // portrait source cropped to 16:9 loses top/bottom; the
+    // trailing scale re-evens the dimensions for libx264.
+    final cropChain = switch (options.cropAspect) {
+      VideoCropAspect.portrait =>
+        "crop='if(gt(a,0.5625),ih*0.5625,iw)':"
+            "'if(gt(a,0.5625),ih,iw/0.5625)',"
+            'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1',
+      VideoCropAspect.square =>
+        "crop='min(iw,ih)':'min(iw,ih)',"
+            'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1',
+      VideoCropAspect.landscape =>
+        "crop='if(gt(a,1.7778),ih*1.7778,iw)':"
+            "'if(gt(a,1.7778),ih,iw/1.7778)',"
+            'scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1',
+      VideoCropAspect.original => null,
+    };
+    if (cropChain != null) {
+      vfParts.insert(0, cropChain);
     }
     // The cap leads the chain so every filter after it works on
     // the smaller frame. No chain (e.g. a mute-only post, which
@@ -828,6 +925,7 @@ class VideoEditService {
         capChain: capChain,
         baseChain: baseChain,
         textFilter: textFilter,
+        cropChain: cropChain,
       );
       args.addAll(['-filter_complex', graph, '-map', '[vout]']);
       switch (options.musicMode) {
@@ -850,7 +948,7 @@ class VideoEditService {
           args.addAll([
             '-map', '1:a:0',
             '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23',
-            '-af', 'afade=t=out:st=$fadeStart:d=2',
+            '-af', _musicFilter(options.musicStartOffset, fadeStart),
             '-c:a', 'aac', '-b:a', '160k',
             '-shortest',
           ]);
@@ -883,7 +981,7 @@ class VideoEditService {
         args.addAll([
           '-map', '0:v:0', '-map', '1:a:0',
           '-c:v', 'libx264', '-preset', 'superfast', '-crf', '23',
-          '-af', 'afade=t=out:st=$fadeStart:d=2',
+          '-af', _musicFilter(options.musicStartOffset, fadeStart),
           '-c:a', 'aac', '-b:a', '160k',
           '-shortest',
         ]);
@@ -952,6 +1050,7 @@ class VideoEditService {
     required String? capChain,
     required String? baseChain,
     required String? textFilter,
+    required String? cropChain,
   }) {
     // [videoWidth]/[videoHeight] are the EFFECTIVE (possibly
     // capped) frame size: the cap stage runs first in the graph,
@@ -998,8 +1097,46 @@ class VideoEditService {
       g.write('[$cur]$textFilter[ftxt];');
       cur = 'ftxt';
     }
+    // The crop runs LAST in the face path: the sticker overlays
+    // above are placed in the uncropped frame's coordinates, so
+    // cropping earlier would misplace them — cropping the finished
+    // frame keeps video and sticker aligned.
+    if (cropChain != null) {
+      g.write('[$cur]$cropChain[fcrop];');
+      cur = 'fcrop';
+    }
     g.write('[$cur]format=yuv420p[vout]');
     return g.toString();
+  }
+
+  /// The `-af` chain for replaced music (editor round 2): the
+  /// song-start offset first — an atrim over the LOOPED music
+  /// input, so playback begins at the chosen part of the track
+  /// and wraps into the track's start if the clip outlasts the
+  /// remainder — then the existing 2-second end fade.
+  static String _musicFilter(Duration offset, double fadeStart) {
+    final parts = <String>[];
+    if (offset > Duration.zero) {
+      parts.add('atrim=start=${_secs(offset)}');
+      parts.add('asetpts=PTS-STARTPTS');
+    }
+    parts.add('afade=t=out:st=$fadeStart:d=2');
+    return parts.join(',');
+  }
+
+  /// Duration in seconds of an audio or video file, via FFprobe.
+  /// Used by the edit screen's song-start picker for files whose
+  /// length the app does not already know (device music, reused
+  /// original sounds). Null when the length cannot be read.
+  static Future<double?> probeDurationSeconds(String path) async {
+    try {
+      final session = await FFprobeKit.getMediaInformation(path);
+      final raw = session.getMediaInformation()?.getDuration();
+      return raw == null ? null : double.tryParse(raw);
+    } catch (e) {
+      debugPrint('probeDurationSeconds failed: $e');
+      return null;
+    }
   }
 
   /// Camcorder-style date stamp, e.g. "23 OCT 2026". Contains no
