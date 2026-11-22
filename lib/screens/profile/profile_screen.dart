@@ -208,7 +208,7 @@ class ProfileScreen extends StatelessWidget {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppTheme.accent,
                           minimumSize: const Size.fromHeight(46),
-                          side: const BorderSide(color: AppTheme.accent),
+                          side: BorderSide(color: AppTheme.accent),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                         ),
@@ -218,7 +218,7 @@ class ProfileScreen extends StatelessWidget {
                   const SizedBox(height: 20),
                   Divider(height: 1, color: AppTheme.hairline),
                   if (vsnap.connectionState == ConnectionState.waiting)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.all(40),
                       child: Center(
                           child: CircularProgressIndicator(
@@ -317,7 +317,7 @@ class ProfileScreen extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: Colors.black54,
                 ),
-                child: const Icon(Icons.push_pin,
+                child: Icon(Icons.push_pin,
                     size: 12, color: AppTheme.accent),
               ),
             ),
@@ -349,7 +349,7 @@ class ProfileScreen extends StatelessWidget {
 
   Widget _thumbFallback() {
     return Container(
-      decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+      decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
       child: const Center(
         child:
             Icon(Icons.play_circle_outline, color: Colors.white70, size: 30),
