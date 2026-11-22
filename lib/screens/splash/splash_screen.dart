@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/screens/auth/auth_screen.dart';
+import 'package:vibeshort/widgets/auth_diag_log.dart';
 import 'package:vibeshort/widgets/main_shell.dart';
 
 /// Splash: the Logo 1 "Play-V" intro (build 16), then routes to
@@ -294,6 +295,12 @@ class _SplashScreenState extends State<SplashScreen>
                           fontSize: 13, color: AppTheme.mutedDark),
                     ),
                   ],
+                  // DIAGNOSTIC BUILD: the visible auth-restore
+                  // log — stays on screen until routing
+                  // completes so the exact failure point of a
+                  // cold-start bounce can be screenshotted.
+                  const SizedBox(height: 16),
+                  const AuthDiagLog(height: 168),
                 ],
               );
             },
