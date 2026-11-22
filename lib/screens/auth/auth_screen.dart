@@ -29,6 +29,24 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     _prefillEmail();
+    // test-apk-75 self-heal: if a persisted session finishes
+    // restoring AFTER the splash gate already routed here (the
+    // recurring "login again" bounce — the native restore lost
+    // its race against the gate on a slow device), AuthService
+    // flips to signed-in when the late event lands; follow it
+    // home instead of stranding a signed-in user on this form.
+    // An explicit sign-out can never trigger this: it removes
+    // the native session, so no late non-null event exists.
+    AuthService.instance.addListener(_healIfSignedIn);
+  }
+
+  void _healIfSignedIn() {
+    if (!mounted || _busy) return;
+    if (AuthService.instance.isSignedIn) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainShell()),
+      );
+    }
   }
 
   Future<void> _prefillEmail() async {
@@ -42,6 +60,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    AuthService.instance.removeListener(_healIfSignedIn);
     _nameCtrl.dispose();
     _usernameCtrl.dispose();
     _referralCtrl.dispose();
