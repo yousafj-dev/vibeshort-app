@@ -83,6 +83,8 @@ class _EarnScreenState extends State<EarnScreen> {
               const SizedBox(height: 16),
               _inviteCard(inviteCoins),
               const SizedBox(height: 24),
+              _teamSection(),
+              const SizedBox(height: 24),
               _sectionTitle('How it works'),
               const SizedBox(height: 8),
               _howItWorksCard(),
@@ -278,9 +280,10 @@ class _EarnScreenState extends State<EarnScreen> {
                     onPressed: code.isEmpty
                         ? null
                         : () => Share.share(
-                            'Join me on VibeShort! Sign up with my invite '
-                            'code $code — when you watch your first video, '
-                            'we both earn coins.'),
+                            'Join me on VibeShort! 📱\n'
+                            'Download the app: https://yousafj-dev.github.io/quizistan-website/vibeshort.html\n'
+                            'Sign up and enter my referral code: $code\n'
+                            'You join my team and we both get free coins! 💰'),
                     icon: const Icon(Icons.share_outlined, size: 19),
                     label: const Text('Share invite'),
                   ),
@@ -314,6 +317,84 @@ class _EarnScreenState extends State<EarnScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// My Team: everyone who signed up with my invite code. A
+  /// member shows 'Joined' while their referral is pending and
+  /// 'Coins earned ✓' once it has qualified.
+  Widget _teamSection() {
+    final fs = FirestoreService.instance;
+    return StreamBuilder<List<VibeTeamMember>>(
+      stream: fs.myTeam(),
+      builder: (context, snap) {
+        final team = snap.data ?? const <VibeTeamMember>[];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle('My Team (${team.length})'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.card,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: team.isEmpty
+                  ? Text(
+                      'No one has joined yet — share your invite link '
+                      'to build your team.',
+                      style: TextStyle(
+                          color: AppTheme.text.withOpacity(0.7),
+                          fontSize: 13,
+                          height: 1.4),
+                    )
+                  : Column(
+                      children: [
+                        for (var i = 0; i < team.length; i++) ...[
+                          if (i > 0)
+                            Divider(color: AppTheme.hairline, height: 20),
+                          _teamRow(team[i]),
+                        ],
+                      ],
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _teamRow(VibeTeamMember member) {
+    final qualified = member.referral.qualificationStatus == 'qualified';
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 17,
+          backgroundColor: AppTheme.hairline,
+          child: Icon(Icons.person_outline,
+              size: 18, color: AppTheme.text.withOpacity(0.7)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            member.username,
+            style: TextStyle(
+                color: AppTheme.text,
+                fontSize: 14,
+                fontWeight: FontWeight.w600),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        Text(
+          qualified ? 'Coins earned ✓' : 'Joined',
+          style: TextStyle(
+            color: qualified ? AppTheme.accent : AppTheme.muted,
+            fontSize: 12.5,
+            fontWeight: qualified ? FontWeight.w700 : FontWeight.w400,
+          ),
+        ),
+      ],
     );
   }
 
