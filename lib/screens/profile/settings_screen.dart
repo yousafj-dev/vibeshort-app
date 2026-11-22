@@ -330,6 +330,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Display name of the currently selected accent colour.
+  String get _accentName {
+    for (final (name, color) in AppTheme.accentChoices) {
+      if (color.value == AppTheme.accent.value) return name;
+    }
+    return 'Custom';
+  }
+
+  /// Accent colour (settings polish round). A DEVICE preference
+  /// like the theme: persisted by PrefsService in
+  /// SharedPreferences, applied app-wide at once through the
+  /// accent notifier the root widget listens to.
+  Future<void> _pickAccent() async {
+    final choice = await showDialog<Color>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.card,
+        title: const Text('Accent color'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (name, color) in AppTheme.accentChoices)
+              ListTile(
+                leading: Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                    border:
+                        Border.all(color: AppTheme.hairline, width: 1),
+                  ),
+                ),
+                title:
+                    Text(name, style: TextStyle(color: AppTheme.text)),
+                trailing: color.value == AppTheme.accent.value
+                    ? Icon(Icons.check, color: AppTheme.accent)
+                    : null,
+                onTap: () => Navigator.of(ctx).pop(color),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && choice.value != AppTheme.accent.value) {
+      await PrefsService.setAccent(choice);
+      if (mounted) setState(() {});
+    }
+  }
+
   // ---------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------
@@ -360,6 +410,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   label: 'Theme',
                   value: PrefsService.lightTheme ? 'Light' : 'Dark',
                   onTap: _pickTheme,
+                ),
+                _row(
+                  icon: Icons.palette_outlined,
+                  label: 'Accent color',
+                  value: _accentName,
+                  onTap: _pickAccent,
                 ),
               ]),
               _group('ACCOUNT', [
@@ -453,9 +509,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 _switch(
                   icon: Icons.person_add_alt_outlined,
-                  label: 'Follows',
+                  label: 'New followers',
                   value: profile?.notifFollows ?? true,
                   field: 'notifFollows',
+                ),
+                _switch(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: 'Wallet updates',
+                  value: profile?.notifWallet ?? true,
+                  field: 'notifWallet',
                 ),
               ]),
               _group('CACHE & DATA', [
@@ -487,7 +549,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Clear cache',
+                      : Text('Clear cache',
                           style: TextStyle(
                               color: AppTheme.accent,
                               fontWeight: FontWeight.w700)),
