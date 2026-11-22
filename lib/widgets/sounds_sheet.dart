@@ -91,7 +91,7 @@ Future<SoundsChoice?> showSoundsSheet(
                           leading: Container(
                             width: 40,
                             height: 40,
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: AppTheme.primaryGradient,
                             ),
@@ -121,7 +121,7 @@ Future<SoundsChoice?> showSoundsSheet(
                             style: TextStyle(color: AppTheme.muted),
                           ),
                           trailing: selectedId == s.id
-                              ? const Icon(Icons.check_circle,
+                              ? Icon(Icons.check_circle,
                                   color: AppTheme.accent, size: 20)
                               : null,
                           onTap: busyId != null
