@@ -271,7 +271,7 @@ class _SplashScreenState extends State<SplashScreen>
                   const SizedBox(height: 28),
                   // Session still restoring — subtle progress cue.
                   if (!resolved)
-                    const SizedBox(
+                    SizedBox(
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
