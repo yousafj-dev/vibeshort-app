@@ -46,6 +46,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///    can no longer strand a signed-in user on the login form.
 ///    An explicit sign-out removes the native session, so no
 ///    late event can ever resurrect one.
+///  * BOUNDED WAIT (test-apk-75): the fuse above only starts
+///    when a null event ARRIVES. Build 74's splash hang (the
+///    user's screenshot: spinner + "Restoring your session…"
+///    that eventually lands on login) was the case where NO
+///    event arrived at all — the native auth listener was
+///    starved by other cold-start work — so no fuse ran and
+///    the only exit was the splash's 8 s backstop resolving
+///    signed-out from an empty cache. A 5 s deadline timer,
+///    started at subscription time and independent of any
+///    stream, now probes the persisted native user directly:
+///    a live user resolves the gate signed-in on the spot,
+///    and with a marker present nothing else is decided by a
+///    timer at all (backstop + self-heal own the rest). A
+///    slow network can therefore never strand a logged-in
+///    user on the splash or bounce him to login.
 ///  * Once resolved signed-in, a stray null event (token-refresh
 ///    / reload edge) never tears the session down; only an
 ///    explicit sign-out does.
@@ -140,6 +155,12 @@ class AuthService extends ChangeNotifier {
   /// reports. Cancelled as soon as the gate resolves.
   StreamSubscription<User?>? _startupTokenSub;
 
+  /// Bounded-wait deadline (test-apk-75): started when the
+  /// startup subscriptions are made; if NO signal has resolved
+  /// the gate by then, the persisted native user is probed
+  /// directly (see the class doc). Cancelled on resolution.
+  Timer? _resolutionTimer;
+
   FirebaseAuth get _authSafe {
     _auth ??= FirebaseAuth.instance;
     return _auth!;
@@ -222,6 +243,24 @@ class AuthService extends ChangeNotifier {
         }
         if (u != null) _onAuthEvent(u);
       });
+      // Bounded wait (test-apk-75): independent of both
+      // streams. If neither has resolved the gate in 5 s —
+      // the build-74 hang, where the native auth listener
+      // never delivered even its first event — probe the
+      // persisted user directly. A live user is definitive
+      // and resolves signed-in through the normal handler.
+      // No cached user + a session marker: decide NOTHING
+      // here (the splash backstop forces a decision at 8 s
+      // and the login self-heal catches any later landing);
+      // no cached user + no marker is already handled by the
+      // null-event path, which fires instantly in practice.
+      _resolutionTimer = Timer(const Duration(seconds: 5), () {
+        if (_authResolved) return;
+        try {
+          final cu = _authSafe.currentUser;
+          if (cu != null) _onAuthEvent(cu);
+        } catch (_) {}
+      });
       notifyListeners();
     } catch (e) {
       debugPrint('AuthService.init failed: $e');
@@ -283,6 +322,7 @@ class AuthService extends ChangeNotifier {
       _authResolved = true;
       _startupTokenSub?.cancel();
       _startupTokenSub = null;
+      _resolutionTimer?.cancel();
       notifyListeners();
       return;
     }
@@ -313,6 +353,7 @@ class AuthService extends ChangeNotifier {
       _authResolved = true;
       _startupTokenSub?.cancel();
       _startupTokenSub = null;
+      _resolutionTimer?.cancel();
       _recordRestoreMiss();
       notifyListeners();
     });
@@ -322,6 +363,7 @@ class AuthService extends ChangeNotifier {
     _fuseRunning = false;
     _fuseTimer?.cancel();
     _fuseRecheck?.cancel();
+    _resolutionTimer?.cancel();
   }
 
   /// Persists a restore-miss diagnostic (see [_kRestoreMissCount]).
