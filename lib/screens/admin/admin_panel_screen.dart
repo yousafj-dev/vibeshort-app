@@ -79,7 +79,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             future: _totals,
             builder: (context, snap) {
               if (snap.connectionState == ConnectionState.waiting) {
-                return const Padding(
+                return Padding(
                   padding: EdgeInsets.all(24),
                   child: Center(
                       child: CircularProgressIndicator(
