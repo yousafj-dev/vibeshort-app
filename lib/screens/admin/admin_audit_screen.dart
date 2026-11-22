@@ -18,7 +18,7 @@ class AdminAuditScreen extends StatelessWidget {
         stream: FirestoreService.instance.auditLogs(),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           final logs = snap.data ?? const <VibeAuditLog>[];
@@ -51,7 +51,7 @@ class AdminAuditScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.receipt_long_outlined,
+              Icon(Icons.receipt_long_outlined,
                   size: 17, color: AppTheme.accent),
               const SizedBox(width: 8),
               Expanded(
