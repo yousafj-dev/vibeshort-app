@@ -96,6 +96,37 @@ class AuthService extends ChangeNotifier {
   static const String offlineMsg =
       'Could not connect. Please check your internet connection and try again.';
 
+  // ===== DIAGNOSTIC BUILD: visible auth-restore log =====
+  // Every step of the startup session restore appends a
+  // timestamped line to [diagLines]; the splash (and, after
+  // routing, the login screen) render the lines on screen so
+  // the exact stopping point of a cold-start bounce can be
+  // read off a screenshot. Every line also goes to
+  // debugPrint. OBSERVATION ONLY — nothing in the gate reads
+  // this state and no routing decision depends on it.
+  static final Stopwatch _diagClock = Stopwatch()..start();
+
+  /// Timestamped diagnostic lines, oldest first.
+  final List<String> diagLines = <String>[];
+
+  /// Short printable form of a uid ('null' or 'uid…123456').
+  static String _uidTail(String? uid) => uid == null
+      ? 'null'
+      : 'uid…${uid.length <= 6 ? uid : uid.substring(uid.length - 6)}';
+
+  /// Appends one timestamped line to the visible log.
+  void diag(String msg) {
+    final line =
+        '[+${(_diagClock.elapsedMilliseconds / 1000).toStringAsFixed(1)}s] $msg';
+    diagLines.add(line);
+    debugPrint('DIAG $line');
+    notifyListeners();
+  }
+
+  /// Whether the first auth-stream event has been logged yet
+  /// (diagnostics only — marks the FIRST event in the log).
+  bool _diagFirstEventSeen = false;
+
   FirebaseAuth? _auth;
   User? _user;
   bool _initialized = false;
@@ -194,6 +225,7 @@ class AuthService extends ChangeNotifier {
     _initialized = true;
     if (!firebaseReady) {
       // Offline mode: nothing to restore; the gate can decide now.
+      diag('init: firebaseReady=false → VERDICT signed-out (offline)');
       _authResolved = true;
       return;
     }
@@ -208,6 +240,9 @@ class AuthService extends ChangeNotifier {
     } catch (_) {
       _markerUid = null;
     }
+    diag('init: session marker = '
+        '${_markerUid == null ? 'NONE' : _uidTail(_markerUid)}, '
+        'explicitOut=$_explicitOut');
     try {
       // Fast path only: a non-null currentUser is a definite
       // signed-in session. A null here proves NOTHING at cold
@@ -215,8 +250,10 @@ class AuthService extends ChangeNotifier {
       // case the first stream event — or the short fuse —
       // resolves the state.
       _user = _authSafe.currentUser;
+      diag('init: currentUser snapshot = ${_uidTail(_user?.uid)}');
       if (_user != null) {
         _authResolved = true;
+        diag('VERDICT: signed-in (currentUser at startup)');
         _markSession(_user!.uid);
       }
       // Standard pattern (test-apk-19): authStateChanges() ONLY.
@@ -225,7 +262,9 @@ class AuthService extends ChangeNotifier {
       // initial/null events fed the fragile restore-window logic
       // this build removes; profile changes are applied through
       // the explicit update methods below, not the stream.
-      _authSafe.authStateChanges().listen(_onAuthEvent);
+      _authSafe
+          .authStateChanges()
+          .listen((u) => _onAuthEvent(u, source: 'authStateChanges'));
       // test-apk-75: second restore signal. On slow devices
       // the native session restore can finish AFTER
       // authStateChanges has already delivered its first
@@ -236,12 +275,14 @@ class AuthService extends ChangeNotifier {
       // token events are ignored here (the authStateChanges
       // path owns null handling and the fuse).
       _startupTokenSub = _authSafe.idTokenChanges().listen((u) {
+        diag('idTokenChanges event: user=${_uidTail(u?.uid)} '
+            '(resolved=$_authResolved)');
         if (_authResolved) {
           _startupTokenSub?.cancel();
           _startupTokenSub = null;
           return;
         }
-        if (u != null) _onAuthEvent(u);
+        if (u != null) _onAuthEvent(u, source: 'idTokenChanges');
       });
       // Bounded wait (test-apk-75): independent of both
       // streams. If neither has resolved the gate in 5 s —
@@ -256,14 +297,69 @@ class AuthService extends ChangeNotifier {
       // null-event path, which fires instantly in practice.
       _resolutionTimer = Timer(const Duration(seconds: 5), () {
         if (_authResolved) return;
+        diag('deadline @5s: gate still unresolved — probing the '
+            'persisted user directly');
         try {
           final cu = _authSafe.currentUser;
-          if (cu != null) _onAuthEvent(cu);
-        } catch (_) {}
+          if (cu != null) {
+            _onAuthEvent(cu, source: 'deadline-probe');
+          } else {
+            diag('deadline @5s: currentUser still null — the '
+                'timer itself decides nothing');
+          }
+        } catch (e) {
+          diag('deadline @5s: probe threw: $e');
+        }
+      });
+      // DIAGNOSTIC BUILD: fixed-time currentUser snapshots and
+      // a forced token-refresh probe. Observation only — the
+      // snapshots never touch gate state, and the probe's
+      // outcome is only logged (a session it revives still
+      // arrives through the normal stream signals above).
+      for (final s in const [1, 3, 5, 10]) {
+        Timer(Duration(seconds: s), () {
+          try {
+            diag('snapshot @${s}s: currentUser='
+                '${_uidTail(_authSafe.currentUser?.uid)} '
+                'resolved=$_authResolved signedIn=$isSignedIn');
+          } catch (e) {
+            diag('snapshot @${s}s: currentUser read threw: $e');
+          }
+        });
+      }
+      Timer(const Duration(seconds: 6), () async {
+        if (_authResolved) {
+          diag('refresh probe @6s: skipped — gate already resolved');
+          return;
+        }
+        User? cu;
+        try {
+          cu = _authSafe.currentUser;
+        } catch (e) {
+          diag('refresh probe @6s: currentUser read threw: $e');
+          return;
+        }
+        if (cu == null) {
+          diag('refresh probe @6s: currentUser is null — no '
+              'persisted session exists to refresh');
+          return;
+        }
+        diag('refresh probe @6s: forcing token refresh for '
+            '${_uidTail(cu.uid)}…');
+        try {
+          await cu.getIdToken(true);
+          diag('refresh probe @6s: token refresh SUCCEEDED');
+        } on FirebaseAuthException catch (e) {
+          diag('refresh probe @6s: token refresh FAILED '
+              '[${e.code}] ${e.message}');
+        } catch (e) {
+          diag('refresh probe @6s: token refresh FAILED (other): $e');
+        }
       });
       notifyListeners();
     } catch (e) {
       debugPrint('AuthService.init failed: $e');
+      diag('init threw: $e → VERDICT signed-out (init failure)');
       _authResolved = true;
     }
   }
@@ -290,8 +386,13 @@ class AuthService extends ChangeNotifier {
   ///    launch gets the same fair chance instead of an instant
   ///    bounce (the old 12 s window cleared the marker at
   ///    expiry, which is what made the failure permanent).
-  void _onAuthEvent(User? u) {
+  void _onAuthEvent(User? u, {String source = '?'}) {
+    // DIAGNOSTIC BUILD: every event is logged with its source;
+    // the first one is flagged. Observation only.
+    final firstMark = _diagFirstEventSeen ? '' : ' FIRST';
+    _diagFirstEventSeen = true;
     if (u != null) {
+      diag('auth event [$source]$firstMark: user=${_uidTail(u.uid)}');
       final wasUnresolved = !_authResolved;
       _user = u;
       _explicitOut = false;
@@ -302,11 +403,16 @@ class AuthService extends ChangeNotifier {
       _markSession(u.uid);
       if (wasUnresolved) {
         debugPrint('AuthService: session resolved signed-in');
+        diag('VERDICT: signed-in (via $source)');
       }
       notifyListeners();
       return;
     }
     // Null event.
+    diag('auth event [$source]$firstMark: null '
+        '(resolved=$_authResolved, '
+        'marker=${_markerUid == null ? 'NONE' : _uidTail(_markerUid)}, '
+        'explicitOut=$_explicitOut)');
     if (_authResolved) {
       if (_user != null && !_explicitOut) {
         debugPrint('AuthService: ignoring transient null event '
@@ -320,6 +426,8 @@ class AuthService extends ChangeNotifier {
     if (_explicitOut || _markerUid == null) {
       _user = null;
       _authResolved = true;
+      diag('VERDICT: signed-out (no session marker / explicit '
+          'sign-out)');
       _startupTokenSub?.cancel();
       _startupTokenSub = null;
       _resolutionTimer?.cancel();
@@ -331,19 +439,22 @@ class AuthService extends ChangeNotifier {
     _fuseRunning = true;
     debugPrint('AuthService: null event with session marker — '
         'short fuse started');
+    diag('null event WITH marker → 6s fuse started');
     notifyListeners();
     _fuseRecheck = Timer(const Duration(milliseconds: 1200), () {
       final cu = _authSafe.currentUser;
-      if (cu != null) _onAuthEvent(cu);
+      if (cu != null) _onAuthEvent(cu, source: 'fuse-recheck');
     });
     _fuseTimer = Timer(_fuseWindow, () {
       _fuseRunning = false;
       if (_authResolved) return;
       final cu = _authSafe.currentUser;
       if (cu != null) {
-        _onAuthEvent(cu);
+        _onAuthEvent(cu, source: 'fuse-expiry');
         return;
       }
+      diag('VERDICT: signed-out (restore miss — fuse expired, '
+          'currentUser still null)');
       // The restore genuinely did not land in time. Resolve
       // signed-out (the splash may now route to login — the ONLY
       // automatic path there), record the miss for diagnosis,
@@ -395,6 +506,7 @@ class AuthService extends ChangeNotifier {
   /// [_markExplicitSignOut] — never on a timeout (test-apk-19).
   Future<void> _markSession(String uid) async {
     _markerUid = uid;
+    diag('session marker written for ${_uidTail(uid)}');
     try {
       final p = await SharedPreferences.getInstance();
       await p.setString(_kSessionUid, uid);
@@ -443,11 +555,13 @@ class AuthService extends ChangeNotifier {
     try {
       final cu = _authSafe.currentUser;
       if (cu != null) {
-        _onAuthEvent(cu);
+        _onAuthEvent(cu, source: 'live-probe');
         return;
       }
     } catch (_) {}
     if (!force) return;
+    diag('VERDICT: signed-out (splash backstop force — no live '
+        'session found)');
     _cancelFuse();
     _startupTokenSub?.cancel();
     _startupTokenSub = null;
