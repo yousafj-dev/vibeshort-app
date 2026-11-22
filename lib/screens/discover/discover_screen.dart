@@ -75,7 +75,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       stream: FirestoreService.instance.videoFeed(limit: 200),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
+          return Center(
               child: CircularProgressIndicator(color: AppTheme.accent));
         }
         final videos = snap.data ?? const <VibeVideo>[];
@@ -165,7 +165,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           builder: (context, vsnap) {
             if (usnap.connectionState == ConnectionState.waiting ||
                 vsnap.connectionState == ConnectionState.waiting) {
-              return const Center(
+              return Center(
                   child: CircularProgressIndicator(color: AppTheme.accent));
             }
             final users = (usnap.data ?? const <VibeUser>[])
