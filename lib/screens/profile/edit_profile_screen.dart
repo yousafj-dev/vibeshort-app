@@ -105,7 +105,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       backgroundColor: AppTheme.bg,
       appBar: AppBar(title: const Text('Edit profile')),
       body: !_loaded
-          ? const Center(
+          ? Center(
               child: CircularProgressIndicator(color: AppTheme.accent))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
@@ -133,7 +133,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             bottom: 0,
                             child: Container(
                               padding: const EdgeInsets.all(7),
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 gradient: AppTheme.primaryGradient,
                               ),
