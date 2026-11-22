@@ -33,7 +33,7 @@ class PublicProfileScreen extends StatelessWidget {
         builder: (context, snap) {
           final profile = snap.data;
           if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
                 child: CircularProgressIndicator(color: AppTheme.accent));
           }
           if (profile == null) {
@@ -327,7 +327,7 @@ class PublicProfileScreen extends StatelessWidget {
 
   Widget _thumbFallback() {
     return Container(
-      decoration: const BoxDecoration(gradient: AppTheme.primaryGradient),
+      decoration: BoxDecoration(gradient: AppTheme.primaryGradient),
       child: const Center(
         child:
             Icon(Icons.play_circle_outline, color: Colors.white70, size: 30),
