@@ -289,7 +289,7 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
       );
     }
     if (_resolvingAnchor) {
-      return const Center(
+      return Center(
           child: CircularProgressIndicator(color: AppTheme.accent));
     }
     final anchorId = _originalAnchorId;
@@ -311,7 +311,7 @@ class _SoundPageScreenState extends State<SoundPageScreen> {
     String? excludeId,
   }) {
     if (snap.connectionState == ConnectionState.waiting && lead.isEmpty) {
-      return const Center(
+      return Center(
           child: CircularProgressIndicator(color: AppTheme.accent));
     }
     var videos = snap.data ?? const <VibeVideo>[];
