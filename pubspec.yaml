@@ -23,6 +23,12 @@ dependencies:
   video_player: ^2.9.2
   image_picker: ^1.1.2
   shared_preferences: ^2.3.2
+  # App-managed session restore: the native Firebase Auth store
+  # does not survive a cold start on the user's phone (proven by
+  # the test-apk-88 diagnostic build), so AuthService keeps the
+  # sign-in credentials in the platform secure storage
+  # (Keystore-backed) and silently re-logs in at cold start.
+  flutter_secure_storage: ^9.2.4
   dio: ^5.7.0
   share_plus: ^10.0.0
   # Fix round: save downloaded videos to the device gallery.
