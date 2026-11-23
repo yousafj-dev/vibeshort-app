@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/upload_manager_service.dart';
 
-/// TikTok-style background-upload indicator for the home feed:
+/// TikTok-style background-post indicator for the home feed:
 /// a small circle on the right edge (below the action rail, just
 /// above the bottom nav) with a progress ring and the live
-/// percentage number inside while [UploadManagerService] uploads.
+/// percentage number inside while [UploadManagerService] runs a
+/// post job.
 ///
 /// States mirror the manager's phase:
-///  * uploading — ring + "42%" counting up;
+///  * preparing — ring + bake "%" with a small "Preparing" label
+///    under the circle; tapping the circle offers Cancel
+///    (confirm dialog) which aborts the bake and drops the post;
+///  * uploading — ring + upload "%" counting up;
 ///  * done — a check for a few seconds, then it hides itself;
-///  * failed — a red alert circle: tap retries the upload, the
-///    small × badge dismisses it.
+///  * failed — a red alert circle: tap retries the job (resuming
+///    at the failed stage), the small × badge dismisses it.
 /// Renders nothing while idle.
 class UploadProgressCircle extends StatelessWidget {
   const UploadProgressCircle({super.key});
@@ -27,33 +31,30 @@ class UploadProgressCircle extends StatelessWidget {
         switch (mgr.phase) {
           case UploadPhase.idle:
             return const SizedBox.shrink();
-          case UploadPhase.uploading:
-            return _circle(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  CircularProgressIndicator(
-                    value: mgr.progress > 0 ? mgr.progress : null,
-                    strokeWidth: 3.2,
-                    backgroundColor: Colors.white24,
-                    color: AppTheme.accent,
+          case UploadPhase.preparing:
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () => _confirmCancel(context),
+                  child: _circle(child: _ring(mgr)),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Preparing',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    shadows: [
+                      Shadow(color: Colors.black87, blurRadius: 4)
+                    ],
                   ),
-                  Center(
-                    child: Text(
-                      '${(mgr.progress * 100).round()}%',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        shadows: [
-                          Shadow(color: Colors.black87, blurRadius: 4)
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             );
+          case UploadPhase.uploading:
+            return _circle(child: _ring(mgr));
           case UploadPhase.done:
             return _circle(
               child: Icon(Icons.check_circle,
@@ -94,6 +95,61 @@ class UploadProgressCircle extends StatelessWidget {
         }
       },
     );
+  }
+
+  /// The progress ring with the live percentage inside — shared
+  /// by the preparing and uploading states.
+  Widget _ring(UploadManagerService mgr) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        CircularProgressIndicator(
+          value: mgr.progress > 0 ? mgr.progress : null,
+          strokeWidth: 3.2,
+          backgroundColor: Colors.white24,
+          color: AppTheme.accent,
+        ),
+        Center(
+          child: Text(
+            '${(mgr.progress * 100).round()}%',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              shadows: [Shadow(color: Colors.black87, blurRadius: 4)],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Cancel confirmation for the bake stage: confirms, then asks
+  /// the manager to abort the bake and drop the post.
+  Future<void> _confirmCancel(BuildContext context) async {
+    final mgr = UploadManagerService.instance;
+    if (!mgr.isPreparing) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel this post?'),
+        content: const Text(
+            'Stop preparing the video and discard the post?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep preparing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Cancel post'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await mgr.cancelJob();
+    }
   }
 
   Widget _circle({required Widget child, Color? borderColor}) {
