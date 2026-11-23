@@ -5,9 +5,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/face_effects.dart';
-import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/services/sounds_service.dart';
-import 'package:vibeshort/services/storage_service.dart';
+import 'package:vibeshort/services/upload_manager_service.dart';
 import 'package:vibeshort/services/video_edit_service.dart';
 import 'package:vibeshort/widgets/sounds_sheet.dart';
 
@@ -124,10 +123,11 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
 
   bool _posting = false;
   bool _processing = false;
-  double _progress = 0;
 
   /// Bake progress (0.0–1.0) reported by VideoEditService while
-  /// [_processing]; the upload phase keeps using [_progress].
+  /// [_processing]. The upload that follows the bake runs in the
+  /// background (UploadManagerService), not on this screen, so
+  /// it needs no progress state here.
   double _processProgress = 0;
 
   /// Set by the processing overlay's Cancel button so the post
@@ -383,11 +383,22 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
     }
     final player = _player;
     if (player == null || _posting) return;
+    // One background upload at a time: if the previous post is
+    // still uploading, say so now instead of baking a second
+    // video that would have nowhere to go.
+    if (UploadManagerService.instance.isUploading) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Upload already in progress — please wait for it to finish.'),
+        ),
+      );
+      return;
+    }
 
     setState(() {
       _posting = true;
       _processing = _hasEdits;
-      _progress = 0;
       _processProgress = 0;
       _cancelRequested = false;
       _error = null;
@@ -424,58 +435,59 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
 
     if (!mounted) return;
     setState(() => _processing = false);
-    try {
-      final url = await StorageService.instance.uploadVideo(
-        toUpload,
-        onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
-        },
-      );
-      String? soundName;
-      String? outSoundId;
-      String? outSourceVideoId;
-      String? outOwnerId;
-      if (_musicMode == MusicMode.replace) {
-        // Posting with picked music: name the sound after the
-        // track. A built-in sound keeps its exact catalogue name
-        // and stores its id for attribution (item 6); a reused
-        // ORIGINAL sound keeps its stored display name
-        // ('original sound — @<owner>') plus the source/owner
-        // attribution (sound page round); a device file is
-        // named after the file, as before.
-        if (_soundId != null) {
-          soundName = _musicName;
-          outSoundId = _soundId;
-        } else if (_soundSourceVideoId != null) {
-          soundName = _musicName;
-          outSourceVideoId = _soundSourceVideoId;
-          outOwnerId = _soundOwnerId;
-        } else {
-          soundName = (_musicName ?? 'Music')
-              .replaceAll(RegExp(r'\.[^.]+$'), '')
-              .replaceAll('_', ' ');
-        }
+
+    String? soundName;
+    String? outSoundId;
+    String? outSourceVideoId;
+    String? outOwnerId;
+    if (_musicMode == MusicMode.replace) {
+      // Posting with picked music: name the sound after the
+      // track. A built-in sound keeps its exact catalogue name
+      // and stores its id for attribution (item 6); a reused
+      // ORIGINAL sound keeps its stored display name
+      // ('original sound — @<owner>') plus the source/owner
+      // attribution (sound page round); a device file is
+      // named after the file, as before.
+      if (_soundId != null) {
+        soundName = _musicName;
+        outSoundId = _soundId;
+      } else if (_soundSourceVideoId != null) {
+        soundName = _musicName;
+        outSourceVideoId = _soundSourceVideoId;
+        outOwnerId = _soundOwnerId;
+      } else {
+        soundName = (_musicName ?? 'Music')
+            .replaceAll(RegExp(r'\.[^.]+$'), '')
+            .replaceAll('_', ' ');
       }
-      await FirestoreService.instance.addVideo(
-        videoUrl: url,
-        caption: _caption.text,
-        soundName: soundName,
-        soundId: outSoundId,
-        soundSourceVideoId: outSourceVideoId,
-        soundOwnerId: outOwnerId,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Your video is live!')),
-      );
-      widget.onPosted?.call();
-      Navigator.of(context).popUntil((r) => r.isFirst);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _posting = false);
     }
+
+    // Background-upload handoff: the manager takes the baked
+    // file + post metadata and runs the upload off-screen; the
+    // user lands straight on the home feed, where the circular
+    // indicator counts the upload percentage (TikTok style).
+    final started = UploadManagerService.instance.startUpload(
+      file: toUpload,
+      caption: _caption.text,
+      soundName: soundName,
+      soundId: outSoundId,
+      soundSourceVideoId: outSourceVideoId,
+      soundOwnerId: outOwnerId,
+    );
+    if (!started) {
+      // An upload started elsewhere a moment ago — stay here so
+      // the user can post again once it finishes.
+      if (mounted) setState(() => _posting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Upload already in progress — please wait for it to finish.'),
+        ),
+      );
+      return;
+    }
+    widget.onPosted?.call();
+    Navigator.of(context).popUntil((r) => r.isFirst);
   }
 
   static String _fmt(double secs) {
@@ -594,22 +606,6 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           color: Color(0xFFFF5C7A), fontSize: 13)),
-                ],
-                if (_posting && !_processing) ...[
-                  const SizedBox(height: 16),
-                  LinearProgressIndicator(
-                    value: _progress > 0 ? _progress : null,
-                    backgroundColor: AppTheme.cardDark,
-                    color: AppTheme.accent,
-                    minHeight: 8,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Uploading… ${(_progress * 100).round()}%',
-                    textAlign: TextAlign.center,
-                    style:
-                        TextStyle(color: AppTheme.mutedDark, fontSize: 13),
-                  ),
                 ],
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
