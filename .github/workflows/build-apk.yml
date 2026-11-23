@@ -30,8 +30,8 @@ jobs:
 
       - name: Build release APK
         run: |
-          flutter pub get
-          flutter build apk --release
+          flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64`
+          
 
       - name: Publish APK as a release download
         uses: softprops/action-gh-release@v2
@@ -53,4 +53,4 @@ jobs:
             RETEST: install, log in once, then close and reopen
             the app 2-3 times (including clearing it from
             Recents) — it should go straight to the feed.
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: build/app/outputs/flutter-apk/app-*-release.apk
