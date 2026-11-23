@@ -30,9 +30,7 @@ jobs:
 
       - name: Build release APK
         run: |
-          flutter build apk --release --split-per-abi --target-platform android-arm,android-arm64
-          
-
+                flutter pub get && flutter build apk --release --target-platform android-arm64 && mv build/app/outputs/flutter-apk/app-release.apk build/app-arm64-v8a-release.apk && flutter build apk --release --target-platform android-arm && mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk && mv build/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
       - name: Publish APK as a release download
         uses: softprops/action-gh-release@v2
         with:
