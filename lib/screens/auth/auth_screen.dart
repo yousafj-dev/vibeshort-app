@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
-import 'package:vibeshort/widgets/auth_diag_log.dart';
 import 'package:vibeshort/widgets/main_shell.dart';
 
 /// Login / Sign up screen (email + password).
@@ -307,13 +306,6 @@ class _AuthScreenState extends State<AuthScreen> {
                       )
                     : Text(_isSignup ? 'Create account' : 'Log in'),
               ),
-              // DIAGNOSTIC BUILD: mirror of the splash's
-              // auth-restore log, so the full restore sequence
-              // (which runs to ~10 s) remains readable — and
-              // screenshottable — after the gate has routed
-              // here. Observation only.
-              const SizedBox(height: 24),
-              const Center(child: AuthDiagLog(height: 190)),
             ],
           ),
         ),
