@@ -17,10 +17,11 @@ import 'package:vibeshort/widgets/sounds_sheet.dart';
 /// The preview applies the selected look live (a ColorFilter matrix
 /// approximation for colour filters and grade effects), the trim
 /// window loops in the preview, and the overlay text is drawn at its
-/// chosen position. On post, FFmpeg bakes the exact filter/effect
-/// chain, trim, music change and text into the uploaded video (see
-/// [VideoEditService]). With no edits chosen the original file is
-/// uploaded untouched.
+/// chosen position. On post, the exact filter/effect chain, trim,
+/// music change and text are baked by FFmpeg in the background
+/// (see [BakeRecipe]) and the result is uploaded — the user waits
+/// on the feed, not here. With no edits chosen the original file
+/// is uploaded untouched.
 class EditVideoScreen extends StatefulWidget {
   final String videoPath;
 
@@ -122,17 +123,6 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
   double _trimEndSec = 0;
 
   bool _posting = false;
-  bool _processing = false;
-
-  /// Bake progress (0.0–1.0) reported by VideoEditService while
-  /// [_processing]. The upload that follows the bake runs in the
-  /// background (UploadManagerService), not on this screen, so
-  /// it needs no progress state here.
-  double _processProgress = 0;
-
-  /// Set by the processing overlay's Cancel button so the post
-  /// unwinds silently (no error message) once the bake stops.
-  bool _cancelRequested = false;
   String? _error;
 
   @override
@@ -368,14 +358,6 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
     _player?.setVolume(mode == MusicMode.mute ? 0 : 1);
   }
 
-  /// Cancel button on the processing overlay: stops the FFmpeg
-  /// bake; the pending [_post] then unwinds without uploading
-  /// anything and without showing an error.
-  Future<void> _cancelProcessing() async {
-    _cancelRequested = true;
-    await VideoEditService.instance.cancelCurrentProcessing();
-  }
-
   Future<void> _post() async {
     if (AuthService.instance.uid == null) {
       setState(() => _error = 'Please log in first to post.');
@@ -383,10 +365,10 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
     }
     final player = _player;
     if (player == null || _posting) return;
-    // One background upload at a time: if the previous post is
-    // still uploading, say so now instead of baking a second
-    // video that would have nowhere to go.
-    if (UploadManagerService.instance.isUploading) {
+    // One background job at a time: if the previous post is still
+    // preparing or uploading, say so now instead of starting a
+    // second job that would have nowhere to go.
+    if (UploadManagerService.instance.isBusy) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -398,43 +380,8 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
 
     setState(() {
       _posting = true;
-      _processing = _hasEdits;
-      _processProgress = 0;
-      _cancelRequested = false;
       _error = null;
     });
-
-    File toUpload = File(widget.videoPath);
-    try {
-      if (_hasEdits) {
-        toUpload = await VideoEditService.instance.processVideo(
-          input: toUpload,
-          options: _options,
-          videoDuration: player.value.duration,
-          videoHeight: player.value.size.height.round(),
-          videoWidth: player.value.size.width.round(),
-          onProgress: (p) {
-            if (mounted) setState(() => _processProgress = p);
-          },
-        );
-      }
-    } catch (e) {
-      // Processing failed: do NOT silently upload the unedited file.
-      // A user-requested cancel lands here too — that one unwinds
-      // quietly, with no error message.
-      if (!mounted) return;
-      setState(() {
-        _posting = false;
-        _processing = false;
-        if (!_cancelRequested) {
-          _error = e.toString().replaceFirst('Exception: ', '');
-        }
-      });
-      return;
-    }
-
-    if (!mounted) return;
-    setState(() => _processing = false);
 
     String? soundName;
     String? outSoundId;
@@ -462,12 +409,24 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
       }
     }
 
-    // Background-upload handoff: the manager takes the baked
-    // file + post metadata and runs the upload off-screen; the
-    // user lands straight on the home feed, where the circular
-    // indicator counts the upload percentage (TikTok style).
-    final started = UploadManagerService.instance.startUpload(
-      file: toUpload,
+    // Background handoff: the manager takes either the raw file
+    // (no edits — uploaded as-is) or a bake recipe (edits chosen —
+    // baked in the background first, then uploaded) plus the post
+    // metadata, and the user lands straight on the home feed,
+    // where the circular indicator counts the current stage's
+    // percentage (TikTok style). Nothing blocks on this screen.
+    final source = File(widget.videoPath);
+    final started = UploadManagerService.instance.startJob(
+      file: _hasEdits ? null : source,
+      bakeRecipe: _hasEdits
+          ? BakeRecipe(
+              input: source,
+              options: _options,
+              videoDuration: player.value.duration,
+              videoHeight: player.value.size.height.round(),
+              videoWidth: player.value.size.width.round(),
+            )
+          : null,
       caption: _caption.text,
       soundName: soundName,
       soundId: outSoundId,
@@ -617,55 +576,6 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
               ],
             ),
           ),
-          if (_processing)
-            Container(
-              color: Colors.black87,
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(
-                        color: AppTheme.accent),
-                    const SizedBox(height: 16),
-                    const Text('Processing…',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 6),
-                    const Text('Applying your edits to the video',
-                        style:
-                            TextStyle(color: Colors.white60, fontSize: 13)),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: 220,
-                      child: LinearProgressIndicator(
-                        value:
-                            _processProgress > 0 ? _processProgress : null,
-                        backgroundColor: AppTheme.cardDark,
-                        color: AppTheme.accent,
-                        minHeight: 8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${(_processProgress * 100).round()}%',
-                      style: const TextStyle(
-                          color: Colors.white60, fontSize: 13),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: _cancelProcessing,
-                      child: const Text('Cancel',
-                          style: TextStyle(
-                              color: Color(0xFFFF5C7A),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
         ],
       ),
     );
