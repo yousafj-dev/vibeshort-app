@@ -10,6 +10,7 @@ import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/services/ad_service.dart';
 import 'package:vibeshort/services/auth_service.dart';
 import 'package:vibeshort/services/prefs_service.dart';
+import 'package:vibeshort/services/upload_manager_service.dart';
 import 'package:vibeshort/screens/splash/splash_screen.dart';
 
 /// VibeShort's Firebase config — explicit options in Dart (no
@@ -159,12 +160,21 @@ class VibeShortApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      // lazy: false — start auth resolution at app start, not on
-      // first read, so the persisted session is known by the time
-      // the splash gate decides where to route.
-      lazy: false,
-      create: (_) => AuthService.instance..init(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          // lazy: false — start auth resolution at app start, not on
+          // first read, so the persisted session is known by the time
+          // the splash gate decides where to route.
+          lazy: false,
+          create: (_) => AuthService.instance..init(),
+        ),
+        // Background uploads (editor handoff → feed progress
+        // circle); a singleton like the other services.
+        ChangeNotifierProvider<UploadManagerService>(
+          create: (_) => UploadManagerService.instance,
+        ),
+      ],
       child: ValueListenableBuilder<bool>(
         // Dark / Light mode (build 16): the persisted choice is
         // loaded into PrefsService before runApp, so the first
