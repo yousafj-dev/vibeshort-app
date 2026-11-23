@@ -18,15 +18,13 @@ import 'package:vibeshort/screens/splash/splash_screen.dart';
 /// (vibeshort_users / vibeshort_videos), so nothing collides with
 /// the other apps using this project.
 const FirebaseOptions _firebaseOptions = FirebaseOptions(
-  // DIAGNOSTIC BUILD (controlled variable): the apiKey is
-  // swapped to the project's OTHER registered key — the one
-  // ending …Gpz8 in the Nov 9 google-services.json, where the
-  // build-83 key ended …-yDk. Both keys are registered for
-  // the com.vibeshort.app client; if the cold-start login
-  // bounce survives on BOTH keys, API-key restrictions are
-  // eliminated as the cause, and the on-screen auth log
-  // (AuthService.diag, rendered by AuthDiagLog) shows where
-  // the session restore actually stops.
+  // FROZEN — never change this apiKey or the appId below, in
+  // any build, ever. The native Firebase Auth session store is
+  // keyed to the app identity (app name + apiKey + appId):
+  // changing either value orphans every existing session and
+  // every user is asked to log in again. This key (ending
+  // …Gpz8) is the one the test-apk-88 diagnostic build proved
+  // the install base on; it stays.
   apiKey: 'AIzaSyDh2Hx5CP_XI80d3NCtjkf5lD1zi71Gpz8',
   authDomain: 'quizistan-academy.firebaseapp.com',
   projectId: 'quizistan-academy',
@@ -100,11 +98,6 @@ void main() async {
   // Firebase is optional at runtime: the app still opens (with a
   // friendly offline message on actions) when init fails.
   AuthService.firebaseReady = await _initFirebase();
-  // DIAGNOSTIC BUILD: first line of the visible auth log —
-  // also proves on-device which apiKey this build carries.
-  AuthService.instance.diag(AuthService.firebaseReady
-      ? 'Firebase initialized OK · apiKey …Gpz8 (diagnostic swap)'
-      : 'Firebase init FAILED → offline mode');
   if (AuthService.firebaseReady) {
     // Automatic crash reporting (Firebase Crashlytics): fatal
     // Flutter errors and uncaught async/platform errors are
