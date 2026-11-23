@@ -1168,3 +1168,57 @@ class VideoEditService {
     return f;
   }
 }
+
+/// A self-contained bake job: everything [VideoEditService.processVideo]
+/// needs to turn the raw [input] clip into the file that gets
+/// uploaded — the selected filter/effect, trim window, crop shape,
+/// overlay text and music choice (all inside [options]), plus the
+/// source's duration and frame size.
+///
+/// The editor used to run this bake inline behind a blocking
+/// "Applying your edits" overlay. It now hands a recipe to
+/// `UploadManagerService`, which runs [bake] in the background
+/// while the user is already back on the feed. The bake itself is
+/// unchanged — same FFmpeg command, same quality; only the
+/// invocation site moved.
+class BakeRecipe {
+  /// Raw clip to bake (camera recording or gallery file).
+  final File input;
+
+  /// The edits to apply (filter/effect, trim, crop, text, music).
+  final VideoEditOptions options;
+
+  /// Source duration and frame size, as read from the preview
+  /// player — the bake caps and proportions are computed from
+  /// these exactly as the old inline call did.
+  final Duration videoDuration;
+  final int videoWidth;
+  final int videoHeight;
+
+  const BakeRecipe({
+    required this.input,
+    required this.options,
+    required this.videoDuration,
+    required this.videoWidth,
+    required this.videoHeight,
+  });
+
+  /// Runs the bake, reporting progress (0.0–1.0) through
+  /// [onProgress]. Throws when the bake fails or is cancelled
+  /// (see [cancel]).
+  Future<File> bake({void Function(double progress)? onProgress}) {
+    return VideoEditService.instance.processVideo(
+      input: input,
+      options: options,
+      videoDuration: videoDuration,
+      videoHeight: videoHeight,
+      videoWidth: videoWidth,
+      onProgress: onProgress,
+    );
+  }
+
+  /// Cancels this recipe's bake while it is running. The pending
+  /// [bake] then throws like any other processing failure.
+  Future<void> cancel() =>
+      VideoEditService.instance.cancelCurrentProcessing();
+}
