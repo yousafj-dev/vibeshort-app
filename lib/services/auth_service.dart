@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Email/password auth for VibeShort.
@@ -68,6 +69,31 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///    screen, and it routes only on a resolved state. Every
 ///    other trip to the login screen in the app follows an
 ///    explicit user tap (Log out / Delete account).
+///
+/// APP-MANAGED RESTORE (the final layer): the test-apk-88
+/// diagnostic build proved — with a fresh login, on the same
+/// build, with the same apiKey — that on the user's phone the
+/// native Firebase Auth store is EMPTY at the next cold start:
+/// currentUser is null from the first instant, the first auth
+/// event is null, and there is no persisted session to refresh,
+/// while this service's SharedPreferences session marker
+/// survives untouched. Native persistence therefore cannot be
+/// relied on for this install base. So, in addition to
+/// everything above: every successful sign-in / sign-up saves
+/// the credentials to the platform secure storage (Android
+/// Keystore-backed, via flutter_secure_storage), and when the
+/// gate would otherwise resolve signed-out WITH a session
+/// marker and no explicit sign-out, it first makes ONE silent
+/// signInWithEmailAndPassword attempt with the stored
+/// credentials (see [_tryStoredRestore]). Success resolves the
+/// gate signed-in through the normal event handler (and the
+/// login screen's self-heal carries the user home if routing
+/// already flipped). A network failure keeps the stored
+/// credentials for the next launch; an invalid-credential
+/// failure deletes them — the user then logs in manually once
+/// and that login re-saves them. An explicit sign-out deletes
+/// the stored credentials, so a deliberate logout is never
+/// silently undone.
 class AuthService extends ChangeNotifier {
   AuthService._();
 
@@ -96,36 +122,23 @@ class AuthService extends ChangeNotifier {
   static const String offlineMsg =
       'Could not connect. Please check your internet connection and try again.';
 
-  // ===== DIAGNOSTIC BUILD: visible auth-restore log =====
-  // Every step of the startup session restore appends a
-  // timestamped line to [diagLines]; the splash (and, after
-  // routing, the login screen) render the lines on screen so
-  // the exact stopping point of a cold-start bounce can be
-  // read off a screenshot. Every line also goes to
-  // debugPrint. OBSERVATION ONLY — nothing in the gate reads
-  // this state and no routing decision depends on it.
-  static final Stopwatch _diagClock = Stopwatch()..start();
+  /// Secure-storage keys for the app-managed session restore
+  /// (see the class doc). The credentials live ONLY in the
+  /// platform secure storage — never in SharedPreferences,
+  /// never logged, and they are sent nowhere except the
+  /// Firebase sign-in call itself.
+  static const String _kSecureEmail = 'vs_auth_email';
+  static const String _kSecurePassword = 'vs_auth_password';
 
-  /// Timestamped diagnostic lines, oldest first.
-  final List<String> diagLines = <String>[];
+  static final FlutterSecureStorage _secureStorage =
+      FlutterSecureStorage();
 
-  /// Short printable form of a uid ('null' or 'uid…123456').
-  static String _uidTail(String? uid) => uid == null
-      ? 'null'
-      : 'uid…${uid.length <= 6 ? uid : uid.substring(uid.length - 6)}';
-
-  /// Appends one timestamped line to the visible log.
-  void diag(String msg) {
-    final line =
-        '[+${(_diagClock.elapsedMilliseconds / 1000).toStringAsFixed(1)}s] $msg';
-    diagLines.add(line);
-    debugPrint('DIAG $line');
-    notifyListeners();
-  }
-
-  /// Whether the first auth-stream event has been logged yet
-  /// (diagnostics only — marks the FIRST event in the log).
-  bool _diagFirstEventSeen = false;
+  /// One silent restore attempt per cold start, ever: the gate
+  /// may reach the "would resolve signed-out" decision from
+  /// more than one path (fuse expiry, splash backstop), and a
+  /// second attempt could race the first one's sign-in.
+  bool _storedRestoreAttempted = false;
+  bool _storedRestoreInFlight = false;
 
   FirebaseAuth? _auth;
   User? _user;
@@ -225,7 +238,6 @@ class AuthService extends ChangeNotifier {
     _initialized = true;
     if (!firebaseReady) {
       // Offline mode: nothing to restore; the gate can decide now.
-      diag('init: firebaseReady=false → VERDICT signed-out (offline)');
       _authResolved = true;
       return;
     }
@@ -240,9 +252,6 @@ class AuthService extends ChangeNotifier {
     } catch (_) {
       _markerUid = null;
     }
-    diag('init: session marker = '
-        '${_markerUid == null ? 'NONE' : _uidTail(_markerUid)}, '
-        'explicitOut=$_explicitOut');
     try {
       // Fast path only: a non-null currentUser is a definite
       // signed-in session. A null here proves NOTHING at cold
@@ -250,10 +259,8 @@ class AuthService extends ChangeNotifier {
       // case the first stream event — or the short fuse —
       // resolves the state.
       _user = _authSafe.currentUser;
-      diag('init: currentUser snapshot = ${_uidTail(_user?.uid)}');
       if (_user != null) {
         _authResolved = true;
-        diag('VERDICT: signed-in (currentUser at startup)');
         _markSession(_user!.uid);
       }
       // Standard pattern (test-apk-19): authStateChanges() ONLY.
@@ -275,8 +282,6 @@ class AuthService extends ChangeNotifier {
       // token events are ignored here (the authStateChanges
       // path owns null handling and the fuse).
       _startupTokenSub = _authSafe.idTokenChanges().listen((u) {
-        diag('idTokenChanges event: user=${_uidTail(u?.uid)} '
-            '(resolved=$_authResolved)');
         if (_authResolved) {
           _startupTokenSub?.cancel();
           _startupTokenSub = null;
@@ -297,69 +302,18 @@ class AuthService extends ChangeNotifier {
       // null-event path, which fires instantly in practice.
       _resolutionTimer = Timer(const Duration(seconds: 5), () {
         if (_authResolved) return;
-        diag('deadline @5s: gate still unresolved — probing the '
-            'persisted user directly');
         try {
           final cu = _authSafe.currentUser;
           if (cu != null) {
             _onAuthEvent(cu, source: 'deadline-probe');
-          } else {
-            diag('deadline @5s: currentUser still null — the '
-                'timer itself decides nothing');
           }
-        } catch (e) {
-          diag('deadline @5s: probe threw: $e');
-        }
-      });
-      // DIAGNOSTIC BUILD: fixed-time currentUser snapshots and
-      // a forced token-refresh probe. Observation only — the
-      // snapshots never touch gate state, and the probe's
-      // outcome is only logged (a session it revives still
-      // arrives through the normal stream signals above).
-      for (final s in const [1, 3, 5, 10]) {
-        Timer(Duration(seconds: s), () {
-          try {
-            diag('snapshot @${s}s: currentUser='
-                '${_uidTail(_authSafe.currentUser?.uid)} '
-                'resolved=$_authResolved signedIn=$isSignedIn');
-          } catch (e) {
-            diag('snapshot @${s}s: currentUser read threw: $e');
-          }
-        });
-      }
-      Timer(const Duration(seconds: 6), () async {
-        if (_authResolved) {
-          diag('refresh probe @6s: skipped — gate already resolved');
-          return;
-        }
-        User? cu;
-        try {
-          cu = _authSafe.currentUser;
-        } catch (e) {
-          diag('refresh probe @6s: currentUser read threw: $e');
-          return;
-        }
-        if (cu == null) {
-          diag('refresh probe @6s: currentUser is null — no '
-              'persisted session exists to refresh');
-          return;
-        }
-        diag('refresh probe @6s: forcing token refresh for '
-            '${_uidTail(cu.uid)}…');
-        try {
-          await cu.getIdToken(true);
-          diag('refresh probe @6s: token refresh SUCCEEDED');
-        } on FirebaseAuthException catch (e) {
-          diag('refresh probe @6s: token refresh FAILED '
-              '[${e.code}] ${e.message}');
-        } catch (e) {
-          diag('refresh probe @6s: token refresh FAILED (other): $e');
-        }
+          // Still null: decide NOTHING here (the fuse and the
+          // splash backstop own the signed-out decision).
+        } catch (_) {}
       });
       notifyListeners();
     } catch (e) {
       debugPrint('AuthService.init failed: $e');
-      diag('init threw: $e → VERDICT signed-out (init failure)');
       _authResolved = true;
     }
   }
@@ -381,18 +335,15 @@ class AuthService extends ChangeNotifier {
   ///  * unresolved WITH a marker → start the short fuse: the
   ///    native restore gets [_fuseWindow] to surface a live
   ///    user (re-checked mid-fuse and at expiry). If none
-  ///    surfaces, the gate resolves signed-out and records a
-  ///    restore miss — but the marker is KEPT, so the next
-  ///    launch gets the same fair chance instead of an instant
-  ///    bounce (the old 12 s window cleared the marker at
-  ///    expiry, which is what made the failure permanent).
+  ///    surfaces, the gate makes its ONE app-managed restore
+  ///    attempt ([_tryStoredRestore]) before it may resolve
+  ///    signed-out and record a restore miss — and the marker
+  ///    is KEPT either way, so the next launch gets the same
+  ///    fair chance instead of an instant bounce (the old 12 s
+  ///    window cleared the marker at expiry, which is what
+  ///    made the failure permanent).
   void _onAuthEvent(User? u, {String source = '?'}) {
-    // DIAGNOSTIC BUILD: every event is logged with its source;
-    // the first one is flagged. Observation only.
-    final firstMark = _diagFirstEventSeen ? '' : ' FIRST';
-    _diagFirstEventSeen = true;
     if (u != null) {
-      diag('auth event [$source]$firstMark: user=${_uidTail(u.uid)}');
       final wasUnresolved = !_authResolved;
       _user = u;
       _explicitOut = false;
@@ -403,16 +354,11 @@ class AuthService extends ChangeNotifier {
       _markSession(u.uid);
       if (wasUnresolved) {
         debugPrint('AuthService: session resolved signed-in');
-        diag('VERDICT: signed-in (via $source)');
       }
       notifyListeners();
       return;
     }
     // Null event.
-    diag('auth event [$source]$firstMark: null '
-        '(resolved=$_authResolved, '
-        'marker=${_markerUid == null ? 'NONE' : _uidTail(_markerUid)}, '
-        'explicitOut=$_explicitOut)');
     if (_authResolved) {
       if (_user != null && !_explicitOut) {
         debugPrint('AuthService: ignoring transient null event '
@@ -426,8 +372,6 @@ class AuthService extends ChangeNotifier {
     if (_explicitOut || _markerUid == null) {
       _user = null;
       _authResolved = true;
-      diag('VERDICT: signed-out (no session marker / explicit '
-          'sign-out)');
       _startupTokenSub?.cancel();
       _startupTokenSub = null;
       _resolutionTimer?.cancel();
@@ -439,13 +383,12 @@ class AuthService extends ChangeNotifier {
     _fuseRunning = true;
     debugPrint('AuthService: null event with session marker — '
         'short fuse started');
-    diag('null event WITH marker → 6s fuse started');
     notifyListeners();
     _fuseRecheck = Timer(const Duration(milliseconds: 1200), () {
       final cu = _authSafe.currentUser;
       if (cu != null) _onAuthEvent(cu, source: 'fuse-recheck');
     });
-    _fuseTimer = Timer(_fuseWindow, () {
+    _fuseTimer = Timer(_fuseWindow, () async {
       _fuseRunning = false;
       if (_authResolved) return;
       final cu = _authSafe.currentUser;
@@ -453,13 +396,19 @@ class AuthService extends ChangeNotifier {
         _onAuthEvent(cu, source: 'fuse-expiry');
         return;
       }
-      diag('VERDICT: signed-out (restore miss — fuse expired, '
-          'currentUser still null)');
-      // The restore genuinely did not land in time. Resolve
-      // signed-out (the splash may now route to login — the ONLY
-      // automatic path there), record the miss for diagnosis,
-      // and KEEP the marker: a timeout must never destroy the
-      // record that a session existed.
+      // The native restore genuinely did not land — on the
+      // user's phone it never does (test-apk-88 evidence: the
+      // native store is empty at cold start). Before accepting
+      // signed-out, make the ONE app-managed restore attempt
+      // from the secure-storage credentials. The splash keeps
+      // showing "Restoring your session…" while this runs —
+      // the gate is still unresolved, which is exactly right.
+      if (await _tryStoredRestore()) return;
+      if (_authResolved) return; // a stream event landed meanwhile
+      // Resolve signed-out (the splash may now route to login —
+      // the ONLY automatic path there), record the miss for
+      // diagnosis, and KEEP the marker: a timeout must never
+      // destroy the record that a session existed.
       _user = null;
       _authResolved = true;
       _startupTokenSub?.cancel();
@@ -506,7 +455,6 @@ class AuthService extends ChangeNotifier {
   /// [_markExplicitSignOut] — never on a timeout (test-apk-19).
   Future<void> _markSession(String uid) async {
     _markerUid = uid;
-    diag('session marker written for ${_uidTail(uid)}');
     try {
       final p = await SharedPreferences.getInstance();
       await p.setString(_kSessionUid, uid);
@@ -546,10 +494,13 @@ class AuthService extends ChangeNotifier {
   /// marker/resolved/listener state stays consistent. With no
   /// live user, nothing is decided unless [force] is set — the
   /// splash's last-resort backstop uses that (long after the
-  /// short fuse has had its full chance) to accept "signed out"
-  /// and let the gate route to login rather than trapping the
-  /// user on the splash forever. In normal operation the fuse
-  /// resolves the gate within ~3 s and this never fires.
+  /// short fuse has had its full chance) to let the gate route
+  /// to login rather than trapping the user on the splash
+  /// forever. Even then, a marker-carrying cold start first
+  /// gets its one app-managed restore attempt
+  /// ([_tryStoredRestore]) before signed-out is accepted. In
+  /// normal operation the fuse resolves the gate within ~6 s
+  /// and this never fires.
   void settleFromLiveSession({bool force = false}) {
     if (_authResolved || !firebaseReady) return;
     try {
@@ -560,14 +511,135 @@ class AuthService extends ChangeNotifier {
       }
     } catch (_) {}
     if (!force) return;
-    diag('VERDICT: signed-out (splash backstop force — no live '
-        'session found)');
+    // A stored-credentials restore is already running (started
+    // by the fuse): it owns the resolution — it either resolves
+    // signed-in or falls through to the signed-out decision in
+    // the fuse path. Forcing a verdict here would race it.
+    if (_storedRestoreInFlight) return;
+    // No live session and no restore running: if this cold
+    // start carried a session marker (and no explicit
+    // sign-out), the gate may not accept signed-out until the
+    // ONE app-managed restore attempt has had its chance —
+    // this backstop can be the first path to reach the
+    // decision when no auth event ever arrived (the build-74
+    // hang), where no fuse is running to make the attempt.
+    if (_markerUid != null && !_explicitOut && !_storedRestoreAttempted) {
+      _tryStoredRestore().then((restored) {
+        if (!restored && !_authResolved) _forceResolveSignedOut();
+      });
+      return;
+    }
+    _forceResolveSignedOut();
+  }
+
+  /// Accepts "signed out" for an unresolved gate: cancels every
+  /// pending restore mechanism and resolves. Used only by the
+  /// last-resort paths (splash backstop, after the app-managed
+  /// restore attempt has failed or does not apply).
+  void _forceResolveSignedOut() {
     _cancelFuse();
     _startupTokenSub?.cancel();
     _startupTokenSub = null;
     _user = null;
     _authResolved = true;
     notifyListeners();
+  }
+
+  // ===== App-managed session restore (secure-storage vault) =====
+
+  /// Saves the credentials of a successful sign-in / sign-up
+  /// into the platform secure storage so a later cold start can
+  /// silently restore the session when the native Firebase
+  /// Auth store comes up empty. Never throws: a vault failure
+  /// must not break an otherwise successful auth flow.
+  Future<void> _saveStoredCredentials(
+      String email, String password) async {
+    try {
+      await _secureStorage.write(key: _kSecureEmail, value: email);
+      await _secureStorage.write(
+          key: _kSecurePassword, value: password);
+    } catch (_) {}
+  }
+
+  /// Deletes the stored credentials (explicit sign-out, account
+  /// deletion, or credentials proven invalid). Never throws.
+  Future<void> _clearStoredCredentials() async {
+    try {
+      await _secureStorage.delete(key: _kSecureEmail);
+      await _secureStorage.delete(key: _kSecurePassword);
+    } catch (_) {}
+  }
+
+  /// The ONE silent re-login attempt of a cold start: signs in
+  /// with the secure-storage credentials and, on success,
+  /// resolves the gate signed-in through the normal event
+  /// handler (marker written, listeners notified — and if the
+  /// splash already routed to the login screen, its self-heal
+  /// follows the signed-in state home).
+  ///
+  /// Returns true when a live session was restored. Returns
+  /// false when there is nothing to restore with, the attempt
+  /// was already made this cold start, or the sign-in failed:
+  ///  * network-type failures KEEP the stored credentials — a
+  ///    later launch on a working connection can still restore;
+  ///  * invalid-credential failures (wrong password, user not
+  ///    found, user disabled, invalid email — e.g. the password
+  ///    was changed elsewhere) DELETE the stored credentials:
+  ///    they can never work again, and the user's next manual
+  ///    login re-saves the current ones.
+  Future<bool> _tryStoredRestore() async {
+    if (_storedRestoreAttempted || _storedRestoreInFlight) {
+      return false;
+    }
+    _storedRestoreAttempted = true;
+    _storedRestoreInFlight = true;
+    try {
+      String? email;
+      String? password;
+      try {
+        email = await _secureStorage.read(key: _kSecureEmail);
+        password = await _secureStorage.read(key: _kSecurePassword);
+      } catch (_) {
+        return false;
+      }
+      if (email == null ||
+          email.isEmpty ||
+          password == null ||
+          password.isEmpty) {
+        return false;
+      }
+      try {
+        final cred = await _authSafe.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        final u = cred.user;
+        if (u == null) return false;
+        debugPrint('AuthService: session restored via stored '
+            'credentials (native store was empty)');
+        _onAuthEvent(u, source: 'stored-restore');
+        return true;
+      } on FirebaseAuthException catch (e) {
+        switch (e.code) {
+          case 'wrong-password':
+          case 'invalid-credential':
+          case 'user-not-found':
+          case 'user-disabled':
+          case 'invalid-email':
+            await _clearStoredCredentials();
+            break;
+          default:
+            // 'network-request-failed' and anything else:
+            // keep the vault for the next launch.
+            break;
+        }
+        return false;
+      } catch (_) {
+        return false;
+      }
+    } finally {
+      _storedRestoreInFlight = false;
+    }
   }
 
   /// Creates the account and returns the new user's uid. Profile
@@ -586,6 +658,7 @@ class AuthService extends ChangeNotifier {
       _authResolved = true;
       _cancelFuse();
       await _cacheEmail(email.trim());
+      await _saveStoredCredentials(email.trim(), pw);
       await _markSession(cred.user!.uid);
       await _clearRestoreMiss();
       notifyListeners();
@@ -608,6 +681,7 @@ class AuthService extends ChangeNotifier {
       _authResolved = true;
       _cancelFuse();
       await _cacheEmail(email.trim());
+      await _saveStoredCredentials(email.trim(), pw);
       await _markSession(cred.user!.uid);
       await _clearRestoreMiss();
       notifyListeners();
@@ -712,6 +786,13 @@ class AuthService extends ChangeNotifier {
     } on FirebaseAuthException catch (e) {
       throw Exception(_friendly(e));
     }
+    // Keep the secure vault in step, or the next cold start
+    // would try the OLD password, fail as invalid-credential
+    // and wipe the vault (forcing a manual login).
+    final email = _user?.email;
+    if (email != null) {
+      await _saveStoredCredentials(email, newPassword);
+    }
   }
 
   /// Deletes the FirebaseAuth user itself. Call AFTER the
@@ -729,12 +810,16 @@ class AuthService extends ChangeNotifier {
     }
     _user = null;
     await _markExplicitSignOut();
+    await _clearStoredCredentials();
     notifyListeners();
   }
 
   /// The ONLY sign-out path in the app (explicit Log out button).
   Future<void> signOut() async {
     await _markExplicitSignOut();
+    // A deliberate logout must never be silently undone by the
+    // app-managed restore: the stored credentials go with it.
+    await _clearStoredCredentials();
     if (!firebaseReady) {
       _user = null;
       notifyListeners();
