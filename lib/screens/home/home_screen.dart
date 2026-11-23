@@ -8,7 +8,9 @@ import 'package:vibeshort/models/vibe_video.dart';
 import 'package:vibeshort/services/ad_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/services/prefs_service.dart';
+import 'package:vibeshort/services/upload_manager_service.dart';
 import 'package:vibeshort/widgets/feed_banner_ad.dart';
+import 'package:vibeshort/widgets/upload_progress_circle.dart';
 import 'package:vibeshort/widgets/video_feed.dart';
 
 /// Home: full-screen vertical feed with TikTok-style top tabs —
@@ -66,18 +68,48 @@ class HomeScreenState extends State<HomeScreen>
   /// running.
   bool _topRefreshing = false;
 
+  /// Last upload phase seen by [_onUploadPhase], so the result
+  /// toasts fire only on the transition into done/failed.
+  UploadPhase _lastUploadPhase = UploadPhase.idle;
+
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, initialIndex: 1, vsync: this);
+    UploadManagerService.instance.addListener(_onUploadPhase);
   }
 
   @override
   void dispose() {
+    UploadManagerService.instance.removeListener(_onUploadPhase);
     _popupTimer?.cancel();
     hostVisible.dispose();
     _tabs.dispose();
     super.dispose();
+  }
+
+  /// Background-upload results (UploadManagerService): a short
+  /// toast when the upload lands ("Video uploaded") or fails
+  /// (the error text; the feed circle stays as the retry
+  /// affordance). The progress itself is the circle overlay.
+  void _onUploadPhase() {
+    final mgr = UploadManagerService.instance;
+    final phase = mgr.phase;
+    if (phase == _lastUploadPhase) return;
+    _lastUploadPhase = phase;
+    if (!mounted) return;
+    if (phase == UploadPhase.done) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Video uploaded')),
+      );
+    } else if (phase == UploadPhase.failed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content:
+              Text(mgr.error ?? 'Upload failed. Please try again.'),
+        ),
+      );
+    }
   }
 
   /// Called by the shell on every bottom-nav switch.
@@ -193,6 +225,17 @@ class HomeScreenState extends State<HomeScreen>
                 ),
               ),
             ),
+          ),
+          // Background-upload indicator: right edge of the
+          // feed, below the cards' action rail (the rail starts
+          // 90 px up from the bottom), just above the bottom
+          // nav. Counts the upload percentage in a ring while
+          // UploadManagerService uploads in the background;
+          // check state on success, tap-to-retry on failure.
+          const Positioned(
+            right: 12,
+            bottom: 16,
+            child: UploadProgressCircle(),
           ),
           // Refresh popup (test-apk-18): a small pill popup under
           // the tabs. It appears when a pull-down (or Home
