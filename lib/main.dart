@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart' show NetworkImageLoadException;
 import 'package:provider/provider.dart';
 import 'package:vibeshort/core/route_observer.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
@@ -106,8 +107,22 @@ void main() async {
     // crashes on testers' phones can be diagnosed remotely.
     // Only wired when Firebase initialized — Crashlytics needs
     // the default app to exist.
-    FlutterError.onError =
-        FirebaseCrashlytics.instance.recordFlutterFatalError;
+    // A profile photo that fails to load (usually just a
+    // dropped connection — the Nov 23 Crashlytics alert:
+    // 3 "crashes" that were all avatar SocketExceptions) is
+    // NOT a crash: report it as non-fatal so it never pages
+    // as a stability issue. Everything else stays fatal.
+    FlutterError.onError = (details) {
+      if (details.exception is NetworkImageLoadException) {
+        FirebaseCrashlytics.instance.recordError(
+          details.exception,
+          details.stack ?? StackTrace.empty,
+          fatal: false,
+        );
+        return;
+      }
+      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+    };
     PlatformDispatcher.instance.onError = (error, stack) {
       FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
       return true;
