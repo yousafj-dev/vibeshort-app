@@ -227,14 +227,15 @@ class HomeScreenState extends State<HomeScreen>
             ),
           ),
           // Background-upload indicator: right edge of the
-          // feed, below the cards' action rail (the rail starts
-          // 90 px up from the bottom), just above the bottom
-          // nav. Counts the upload percentage in a ring while
-          // UploadManagerService uploads in the background;
+          // feed, UPPER area below the tabs (user's order,
+          // Nov 24: the circle sat too low at the bottom —
+          // move it up on the right side). Counts the bake /
+          // upload percentage in a ring while
+          // UploadManagerService works in the background;
           // check state on success, tap-to-retry on failure.
           const Positioned(
             right: 12,
-            bottom: 16,
+            top: 108,
             child: UploadProgressCircle(),
           ),
           // Refresh popup (test-apk-18): a small pill popup under
