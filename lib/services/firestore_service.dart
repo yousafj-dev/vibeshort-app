@@ -974,40 +974,60 @@ class FirestoreService {
   }
 
   /// Records a referral for a freshly signed-up user who entered
-  /// someone's code (blueprint Section 8). Best-effort and silent:
-  /// an unknown code, a self-referral, or a duplicate sign-up
-  /// simply records nothing, and a failure here must NEVER break
-  /// signup. No reward is created — qualification is decided
-  /// later under the published rules, with abuse checks.
-  Future<void> recordReferral({
+  /// someone's code (blueprint Section 8). Returns true when a
+  /// referral was recorded, false when the code matched nobody
+  /// (or was a self-referral / duplicate) — the sign-up screen
+  /// uses the result to tell the user "code not found" instead
+  /// of failing silently (user's order, Nov 24). A failure here
+  /// must NEVER break signup. No reward is created —
+  /// qualification is decided later under the published rules,
+  /// with abuse checks.
+  ///
+  /// The code is accepted with or without its "VIBE-" prefix
+  /// (user's order, Nov 24): users often type only the part
+  /// after the dash, so both forms are tried.
+  Future<bool> recordReferral({
     required String newUid,
     required String rawCode,
   }) async {
-    final code = rawCode.trim().toUpperCase();
-    if (code.isEmpty) return;
+    final typed = rawCode.trim().toUpperCase();
+    if (typed.isEmpty) return false;
+    final candidates = <String>[
+      typed,
+      if (!typed.startsWith('VIBE-')) 'VIBE-$typed',
+    ];
     try {
-      final q = await _users
-          .where('referralCode', isEqualTo: code)
-          .limit(1)
-          .get();
-      if (q.docs.isEmpty) return;
-      final referrerId = q.docs.first.id;
-      if (referrerId == newUid) return;
+      String? referrerId;
+      String? matchedCode;
+      for (final code in candidates) {
+        final q = await _users
+            .where('referralCode', isEqualTo: code)
+            .limit(1)
+            .get();
+        if (q.docs.isNotEmpty) {
+          referrerId = q.docs.first.id;
+          matchedCode = code;
+          break;
+        }
+      }
+      if (referrerId == null || referrerId == newUid) return false;
       final existing = await _referrals
           .where('referred_user_id', isEqualTo: newUid)
           .limit(1)
           .get();
-      if (existing.docs.isNotEmpty) return;
+      if (existing.docs.isNotEmpty) return false;
       await _referrals.add({
         'referrer_id': referrerId,
         'referred_user_id': newUid,
-        'code': code,
+        'code': matchedCode,
         'qualification_status': 'pending',
         'reward_transaction_id': null,
         'created_at': FieldValue.serverTimestamp(),
       });
+      return true;
     } catch (e) {
       debugPrint('recordReferral failed: $e');
+      return false;
     }
   }
 
