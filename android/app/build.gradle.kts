@@ -1,1 +1,60 @@
-cGx1Z2lucyB7CiAgICBpZCgiY29tLmFuZHJvaWQuYXBwbGljYXRpb24iKQogICAgaWQoIm9yZy5qZXRicmFpbnMua290bGluLmFuZHJvaWQiKQogICAgLy8gTk9URTogbm8gZ29vZ2xlLXNlcnZpY2VzIHBsdWdpbiDigJQgVmliZVNob3J0IGNvbmZpZ3VyZXMgRmlyZWJhc2UKICAgIC8vIHdpdGggZXhwbGljaXQgRmlyZWJhc2VPcHRpb25zIGluIERhcnQgKG5vIGdvb2dsZS1zZXJ2aWNlcy5qc29uKS4KICAgIC8vIFRoZSBGbHV0dGVyIEdyYWRsZSBQbHVnaW4gbXVzdCBiZSBhcHBsaWVkIGFmdGVyIHRoZSBBbmRyb2lkIGFuZCBLb3RsaW4gR3JhZGxlIHBsdWdpbnMuCiAgICBpZCgiZGV2LmZsdXR0ZXIuZmx1dHRlci1ncmFkbGUtcGx1Z2luIikKfQoKYW5kcm9pZCB7CiAgICBuYW1lc3BhY2UgPSAiY29tLnZpYmVzaG9ydC5hcHAiCiAgICBjb21waWxlU2RrID0gZmx1dHRlci5jb21waWxlU2RrVmVyc2lvbgogICAgLy8gTkRLIG5vdCByZXF1aXJlZDogcHVyZS1EYXJ0IGFwcCB3aXRoIG5vIG5hdGl2ZSBjb2RlLgoKICAgIGNvbXBpbGVPcHRpb25zIHsKICAgICAgICBzb3VyY2VDb21wYXRpYmlsaXR5ID0gSmF2YVZlcnNpb24uVkVSU0lPTl8xNwogICAgICAgIHRhcmdldENvbXBhdGliaWxpdHkgPSBKYXZhVmVyc2lvbi5WRVJTSU9OXzE3CiAgICB9CgogICAgc2lnbmluZ0NvbmZpZ3MgewogICAgICAgIGNyZWF0ZSgidmliZXNob3J0IikgewogICAgICAgICAgICBzdG9yZUZpbGUgPSBmaWxlKCJ2aWJlc2hvcnQtdGVzdC5rZXlzdG9yZSIpCiAgICAgICAgICAgIHN0b3JlUGFzc3dvcmQgPSAidmliZXNob3J0MTIzIgogICAgICAgICAgICBrZXlBbGlhcyA9ICJ2aWJlc2hvcnQiCiAgICAgICAgICAgIGtleVBhc3N3b3JkID0gInZpYmVzaG9ydDEyMyIKICAgICAgICB9CiAgICB9CgogICAgZGVmYXVsdENvbmZpZyB7CiAgICAgICAgYXBwbGljYXRpb25JZCA9ICJjb20udmliZXNob3J0LmFwcCIKICAgICAgICBtaW5TZGsgPSAyNAogICAgICAgIHRhcmdldFNkayA9IGZsdXR0ZXIudGFyZ2V0U2RrVmVyc2lvbgogICAgICAgIHZlcnNpb25Db2RlID0gZmx1dHRlci52ZXJzaW9uQ29kZQogICAgICAgIHZlcnNpb25OYW1lID0gZmx1dHRlci52ZXJzaW9uTmFtZQoKICAgICAgICAvLyBBQkkgcG9saWN5OiBkbyBOT1QgYWRkIGFiaUZpbHRlcnMgb3IgYSBncmFkbGUgc3BsaXRzIGJsb2NrCiAgICAgICAgLy8gaGVyZSDigJQgRmx1dHRlcidzIGdyYWRsZSBwbHVnaW4gcmVqZWN0cyBhIG1hbnVhbCBzcGxpdHMKICAgICAgICAvLyBjb25maWcgd2hlbiB0aGUgYnVpbGQgcnVucyB3aXRob3V0IC0tc3BsaXQtcGVyLWFiaSAoYnVpbGQKICAgICAgICAvLyBmYWlscyBpbiBzZWNvbmRzOyBwcm92ZW4gYnkgcnVucyAjMTA1LTEwNiwgMjMgTm92IDIwMjYpLiBBQkkKICAgICAgICAvLyBzZWxlY3Rpb24gbGl2ZXMgaW4gdGhlIHJlbGVhc2UgYnVpbGQgY29tbWFuZCBpbnN0ZWFkOgogICAgICAgIC8vIC5naXRodWIvd29ya2Zsb3dzL2J1aWxkLWFway55bWwgYnVpbGRzIHdpdGgKICAgICAgICAvLyAgIGZsdXR0ZXIgYnVpbGQgYXBrIC0tcmVsZWFzZSAtLXNwbGl0LXBlci1hYmkKICAgICAgICAvLyAgICAgLS10YXJnZXQtcGxhdGZvcm0gYW5kcm9pZC1hcm0sYW5kcm9pZC1hcm02NAogICAgICAgIC8vIHByb2R1Y2luZyB0d28gc3RhbmRhbG9uZSBBUEtzIOKAlCBhcm02NC12OGEgKG1vZGVybiA2NC1iaXQKICAgICAgICAvLyBwaG9uZXMpIGFuZCBhcm1lYWJpLXY3YSAob2xkZXIgMzItYml0IHBob25lcykg4oCUIGFuZCBubwogICAgICAgIC8vIHg4Ni94ODZfNjQgKGVtdWxhdG9ycyBvbmx5KS4gVGhlIG9sZCBhcm02NC1vbmx5IGFiaUZpbHRlcnMKICAgICAgICAvLyBtYWRlIHRoZSBhcHAgdW5pbnN0YWxsYWJsZSBvbiAzMi1iaXQgcGhvbmVzICgiQXBwIGlzbid0CiAgICAgICAgLy8gY29tcGF0aWJsZSB3aXRoIHlvdXIgcGhvbmUiKTsgdGhlIGFsbC1BQkkgdW5pdmVyc2FsIEFQSwogICAgICAgIC8vIGJhbGxvb25lZCB0byAzMjYgTUIuIFNwbGl0cyBhcmUgdGhlIG1pZGRsZSBwYXRoLgogICAgfQoKICAgIGJ1aWxkVHlwZXMgewogICAgICAgIHJlbGVhc2UgewogICAgICAgICAgICAvLyBTaWduZWQgd2l0aCB0aGUgcGVyc2lzdGVudCB0ZXN0IGtleXN0b3JlIHNvIHVwZGF0ZXMgaW5zdGFsbAogICAgICAgICAgICAvLyBjbGVhbmx5IG92ZXIgcHJldmlvdXMgYnVpbGRzIChzYW1lIHNpZ25hdHVyZSBldmVyeSB0aW1lKS4KICAgICAgICAgICAgLy8gKEZpbmFsIFBsYXkgU3RvcmUga2V5IHdpbGwgcmVwbGFjZSB0aGlzIGJlZm9yZSBsYXVuY2guKQogICAgICAgICAgICBzaWduaW5nQ29uZmlnID0gc2lnbmluZ0NvbmZpZ3MuZ2V0QnlOYW1lKCJ2aWJlc2hvcnQiKQogICAgICAgIH0KICAgIH0KfQoKa290bGluIHsKICAgIGNvbXBpbGVyT3B0aW9ucyB7CiAgICAgICAganZtVGFyZ2V0ID0gb3JnLmpldGJyYWlucy5rb3RsaW4uZ3JhZGxlLmRzbC5Kdm1UYXJnZXQuSlZNXzE3CiAgICB9Cn0KCmZsdXR0ZXIgewogICAgc291cmNlID0gIi4uLy4uIgp9Cg==
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    // NOTE: no google-services plugin — VibeShort configures Firebase
+    // with explicit FirebaseOptions in Dart (no google-services.json).
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+android {
+    namespace = "com.vibeshort.app"
+    compileSdk = flutter.compileSdkVersion
+    // NDK not required: pure-Dart app with no native code.
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        create("vibeshort") {
+            storeFile = file("vibeshort-test.keystore")
+            storePassword = "vibeshort123"
+            keyAlias = "vibeshort"
+            keyPassword = "vibeshort123"
+        }
+    }
+
+    defaultConfig {
+        applicationId = "com.vibeshort.app"
+        minSdk = 24
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+
+        // No abiFilters: ship native libs for ALL ABIs (arm64-v8a,
+        // armeabi-v7a, x86_64) in one universal APK. Restricting to
+        // arm64-v8a only made the app uninstallable on 32-bit phones
+        // ("App isn't compatible with your phone").
+    }
+
+    buildTypes {
+        release {
+            // Signed with the persistent test keystore so updates install
+            // cleanly over previous builds (same signature every time).
+            // (Final Play Store key will replace this before launch.)
+            signingConfig = signingConfigs.getByName("vibeshort")
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}
