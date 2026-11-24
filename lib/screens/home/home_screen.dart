@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vibeshort/core/theme/app_theme.dart';
 import 'package:vibeshort/models/vibe_video.dart';
+import 'package:vibeshort/screens/discover/discover_screen.dart';
 import 'package:vibeshort/services/ad_service.dart';
 import 'package:vibeshort/services/firestore_service.dart';
 import 'package:vibeshort/services/prefs_service.dart';
@@ -213,6 +214,30 @@ class HomeScreenState extends State<HomeScreen>
                             Tab(text: 'Following'),
                             Tab(text: 'For You'),
                           ],
+                        ),
+                      ),
+                    ),
+                    // Search (user's order, Nov 24): a search
+                    // button on the LEFT side of the feed header,
+                    // opening the Discover/search page.
+                    Positioned(
+                      left: 2,
+                      top: 0,
+                      bottom: 0,
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.search,
+                          color: Colors.white,
+                          size: 27,
+                          shadows: [
+                            Shadow(color: Colors.black87, blurRadius: 6)
+                          ],
+                        ),
+                        tooltip: 'Search',
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const DiscoverScreen(),
+                          ),
                         ),
                       ),
                     ),
@@ -434,6 +459,37 @@ class _FeedPaneState extends State<_FeedPane> {
         if (snap.connectionState == ConnectionState.waiting) {
           return Center(
               child: CircularProgressIndicator(color: AppTheme.accent));
+        }
+        if (snap.hasError) {
+          // A stream error (usually a dropped connection) is
+          // NOT an empty feed: never show "No videos yet" for
+          // it (audit fix, Nov 24).
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.wifi_off, size: 56, color: AppTheme.muted),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Connection problem',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: AppTheme.text,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Check your internet connection, then pull down to try again.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppTheme.muted),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
         final pool = snap.data ?? const <VibeVideo>[];
         if (pool.isEmpty) {
