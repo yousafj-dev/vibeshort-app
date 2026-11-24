@@ -93,6 +93,37 @@ class _InboxScreenState extends State<InboxScreen> {
                     child:
                         CircularProgressIndicator(color: AppTheme.accent));
               }
+              if (snap.hasError) {
+                // A stream error is NOT an empty inbox (audit
+                // fix, Nov 24).
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.wifi_off,
+                            size: 56, color: AppTheme.muted),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Connection problem',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: AppTheme.text,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Your inbox could not load. Check your internet connection and open this tab again.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppTheme.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
               final items = (snap.data ?? const <VibeNotification>[])
                   .where((n) => _typeEnabled(n, prefs))
                   .toList();
