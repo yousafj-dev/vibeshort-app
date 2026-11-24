@@ -269,9 +269,14 @@ class AuthService extends ChangeNotifier {
       // initial/null events fed the fragile restore-window logic
       // this build removes; profile changes are applied through
       // the explicit update methods below, not the stream.
-      _authSafe
-          .authStateChanges()
-          .listen((u) => _onAuthEvent(u, source: 'authStateChanges'));
+      _authSafe.authStateChanges().listen(
+            (u) => _onAuthEvent(u, source: 'authStateChanges'),
+            // An error on the auth stream must never escape as
+            // an uncaught async error (Crashlytics "crash"):
+            // log it and let the bounded-wait fuse + splash
+            // backstop resolve the gate as designed.
+            onError: (Object e) => debugPrint('authStateChanges error: $e'),
+          );
       // test-apk-75: second restore signal. On slow devices
       // the native session restore can finish AFTER
       // authStateChanges has already delivered its first
@@ -281,14 +286,17 @@ class AuthService extends ChangeNotifier {
       // into the same handler until the gate resolves; null
       // token events are ignored here (the authStateChanges
       // path owns null handling and the fuse).
-      _startupTokenSub = _authSafe.idTokenChanges().listen((u) {
-        if (_authResolved) {
-          _startupTokenSub?.cancel();
-          _startupTokenSub = null;
-          return;
-        }
-        if (u != null) _onAuthEvent(u, source: 'idTokenChanges');
-      });
+      _startupTokenSub = _authSafe.idTokenChanges().listen(
+        (u) {
+          if (_authResolved) {
+            _startupTokenSub?.cancel();
+            _startupTokenSub = null;
+            return;
+          }
+          if (u != null) _onAuthEvent(u, source: 'idTokenChanges');
+        },
+        onError: (Object e) => debugPrint('idTokenChanges error: $e'),
+      );
       // Bounded wait (test-apk-75): independent of both
       // streams. If neither has resolved the gate in 5 s —
       // the build-74 hang, where the native auth listener
