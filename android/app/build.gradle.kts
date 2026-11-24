@@ -33,10 +33,10 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // No abiFilters: ship native libs for ALL ABIs (arm64-v8a,
-        // armeabi-v7a, x86_64) in one universal APK. Restricting to
-        // arm64-v8a only made the app uninstallable on 32-bit phones
-        // ("App isn't compatible with your phone").
+        // Ship native libs for arm64-v8a ONLY (small APK from day one).
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -45,6 +45,10 @@ android {
             // cleanly over previous builds (same signature every time).
             // (Final Play Store key will replace this before launch.)
             signingConfig = signingConfigs.getByName("vibeshort")
+
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
         }
     }
 }
