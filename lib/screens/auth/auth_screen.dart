@@ -115,15 +115,22 @@ class _AuthScreenState extends State<AuthScreen> {
           username: username,
           email: email,
         );
-        // Optional referral code (Phase 3 groundwork): records
-        // who invited this user. Best-effort — an unknown code
-        // records nothing and never blocks the signup.
+        // Optional referral code: records who invited this
+        // user. The code works with or without its "VIBE-"
+        // prefix; an unknown code no longer fails silently —
+        // the user is told (user's order, Nov 24) — but it
+        // never blocks the signup itself.
         final refCode = _referralCtrl.text.trim();
+        var refNotFound = false;
         if (refCode.isNotEmpty) {
-          await FirestoreService.instance.recordReferral(
+          refNotFound = !await FirestoreService.instance.recordReferral(
             newUid: uid,
             rawCode: refCode,
           );
+        }
+        if (refNotFound) {
+          _toast(
+              'Referral code not found — your account was created without it.');
         }
       } else {
         await auth.signIn(email, pass);
