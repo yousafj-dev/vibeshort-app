@@ -193,8 +193,17 @@ class _EditVideoScreenState extends State<EditVideoScreen> {
 
   Future<void> _initPlayer() async {
     final c = VideoPlayerController.file(File(widget.videoPath));
-    await c.initialize();
-    await c.setLooping(true);
+    try {
+      await c.initialize();
+      await c.setLooping(true);
+    } catch (e) {
+      // A corrupt or unreadable clip must not escape as an
+      // uncaught async error (Crashlytics "crash"): drop the
+      // controller and leave the preview empty instead.
+      debugPrint('EditVideo: preview init failed: $e');
+      await c.dispose();
+      return;
+    }
     if (!mounted) {
       c.dispose();
       return;
